@@ -118,7 +118,164 @@ async function getMe(userId) {
   return user;
 }
 
+async function registerCustomer(data, req = null) {
+  const { name, email, phone, password, address, city } = data;
+  const cleanName = name ? name.trim() : "";
+  const cleanEmail = email && email.trim() ? email.trim().toLowerCase() : null;
+  const cleanPhone = phone && phone.trim() ? phone.trim().replace(/[\s\-\(\)]/g, "") : null;
+
+  if (!cleanName) {
+    const error = new Error("Full name is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!password || password.length < 6) {
+    const error = new Error("Password must be at least 6 characters long.");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!cleanPhone && !cleanEmail) {
+    const error = new Error("Phone number or email address is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Get active company
+  const company = await prisma.company.findFirst({ where: { isActive: true } });
+  if (!company) {
+    const error = new Error("Active company profile not found.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Check if User already exists with email
+  if (cleanEmail) {
+    const existingEmail = await prisma.user.findFirst({
+      where: { companyId: company.id, email: cleanEmail },
+    });
+    if (existingEmail) {
+      const error = new Error(`An account with email "${cleanEmail}" already exists. Please sign in instead.`);
+      error.statusCode = 409;
+      throw error;
+    }
+  }
+
+  // Check if User already exists with phone
+  if (cleanPhone) {
+    const existingPhone = await prisma.user.findFirst({
+      where: { companyId: company.id, phone: cleanPhone },
+    });
+    if (existingPhone) {
+      const error = new Error(
+        cleanPhone === "9876543210"
+          ? "Phone number 9876543210 is reserved for the demo customer. Please use your own mobile number (e.g. 9811122233) or sign in with customer@sunpower.com."
+          : `An account with phone number "${cleanPhone}" already exists. Please sign in instead.`
+      );
+      error.statusCode = 409;
+      throw error;
+    }
+  }
+
+  const salt = await bcrypt.genSalt(10);
+  const passwordHash = await bcrypt.hash(password, salt);
+
+  // Find or create Customer entity in CRM
+  let customer = await prisma.customer.findFirst({
+    where: {
+      companyId: company.id,
+      OR: [
+        ...(cleanPhone ? [{ phone: cleanPhone }] : []),
+        ...(cleanEmail ? [{ email: cleanEmail }] : []),
+      ],
+    },
+  });
+
+  if (!customer) {
+    customer = await prisma.customer.create({
+      data: {
+        companyId: company.id,
+        name: cleanName,
+        phone: cleanPhone || `98${Date.now().toString().slice(-8)}`,
+        email: cleanEmail,
+        address: address ? address.trim() : null,
+        city: city ? city.trim() : null,
+        isActive: true,
+      },
+    });
+  } else {
+    customer = await prisma.customer.update({
+      where: { id: customer.id },
+      data: {
+        name: cleanName,
+        email: cleanEmail || customer.email,
+        phone: cleanPhone || customer.phone,
+        address: address ? address.trim() : customer.address,
+        city: city ? city.trim() : customer.city,
+      },
+    });
+  }
+
+  // Create User with role: CUSTOMER
+  const user = await prisma.user.create({
+    data: {
+      companyId: company.id,
+      name: cleanName,
+      email: cleanEmail,
+      phone: cleanPhone,
+      passwordHash,
+      role: "CUSTOMER",
+      isActive: true,
+      lastLoginAt: new Date(),
+    },
+    include: {
+      company: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+      },
+    },
+  });
+
+  // Record audit log
+  await recordAuditLog({
+    companyId: company.id,
+    actorId: user.id,
+    action: "CREATE",
+    entityType: "User",
+    entityId: user.id,
+    metadata: { role: "CUSTOMER", phone: user.phone, email: user.email },
+    req,
+  });
+
+  const token = jwt.sign(
+    {
+      sub: user.id,
+      role: user.role,
+      companyId: user.companyId,
+    },
+    env.JWT_SECRET,
+    { expiresIn: env.JWT_EXPIRES_IN || "7d" }
+  );
+
+  return {
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      companyId: user.companyId,
+      company: user.company,
+    },
+    customer,
+  };
+}
+
 module.exports = {
   login,
   getMe,
+  registerCustomer,
 };

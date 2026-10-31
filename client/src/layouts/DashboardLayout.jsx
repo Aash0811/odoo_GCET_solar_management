@@ -25,6 +25,7 @@ import {
   Play,
   CheckCircle2,
   ArrowRight,
+  Sliders,
 } from 'lucide-react';
 
 const TOUR_STEPS = [
@@ -95,8 +96,9 @@ export default function DashboardLayout() {
 
   const navItems = [
     { label: 'Admin Dashboard', path: '/admin/dashboard', icon: LayoutDashboard, roles: ['ADMIN'] },
+    { label: 'Solar Package Configurator', path: '/admin/packages', icon: Sliders, roles: ['ADMIN'] },
     { label: 'Lead Board (Kanban)', path: '/sales/leads', icon: Kanban, roles: ['ADMIN', 'SALESMAN'] },
-    { label: 'Quote Builder', path: '/sales/quotes', icon: FileSpreadsheet, roles: ['ADMIN', 'SALESMAN'] },
+    { label: 'Quote Builder', path: '/sales/quotes', icon: FileSpreadsheet, roles: ['SALESMAN'] },
     { label: 'Orders & Payments', path: '/sales/orders', icon: Receipt, roles: ['ADMIN', 'SALESMAN'] },
     { label: 'Warehouse & Dispatch', path: '/warehouse/dispatch', icon: Boxes, roles: ['ADMIN', 'WAREHOUSE'] },
     { label: 'Installation Jobs', path: '/technician/jobs', icon: Wrench, roles: ['ADMIN', 'TECHNICIAN'] },

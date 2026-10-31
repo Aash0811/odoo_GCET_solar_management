@@ -42,6 +42,21 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const register = async (registerData) => {
+    setLoading(true);
+    try {
+      const res = await authApi.register(registerData);
+      const { token: jwtToken, user: userData } = res.data.data;
+      setToken(jwtToken);
+      setUser(userData);
+      localStorage.setItem('sunpower_token', jwtToken);
+      localStorage.setItem('sunpower_user', JSON.stringify(userData));
+      return userData;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
@@ -70,6 +85,7 @@ export function AuthProvider({ children }) {
         token,
         loading,
         login,
+        register,
         logout,
         quickSwitchRole,
         isAuthenticated: Boolean(token && user),

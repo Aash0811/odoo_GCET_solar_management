@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
-import { customerPortalApi, quotesApi, jobsApi } from '../../api';
+import { customerPortalApi, quotesApi, jobsApi, leadsApi } from '../../api';
 import {
   Sun,
   ShieldCheck,
@@ -23,12 +23,26 @@ import {
   BadgePercent,
   Check,
   Zap,
+  Calculator,
+  X,
 } from 'lucide-react';
 
 export default function CustomerPortalPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Request Solar Quote Modal
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
+  const [quoteSubmitting, setQuoteSubmitting] = useState(false);
+  const [quoteSuccess, setQuoteSuccess] = useState('');
+  const [quoteForm, setQuoteForm] = useState({
+    desiredCapacityKw: 3,
+    monthlyBillAmount: 4500,
+    roofType: 'RCC Concrete Flat',
+    address: '',
+    notes: 'Inquiry for rooftop solar under PM Surya Ghar Subsidy scheme.',
+  });
 
   // Raise Ticket Modal
   const [showTicketModal, setShowTicketModal] = useState(false);
@@ -45,6 +59,39 @@ export default function CustomerPortalPage() {
   const [signerName, setSignerName] = useState('');
   const sigCanvas = useRef(null);
   const [signingLoading, setSigningLoading] = useState(false);
+
+  // Live subsidy calculator helper
+  const calculateEstimate = (kw) => {
+    const capacity = Number(kw) || 3;
+    let grossCost = 0;
+    let subsidy = 0;
+    let monthlySavings = 0;
+
+    if (capacity === 1) {
+      grossCost = 75000;
+      subsidy = 30000;
+      monthlySavings = 1200;
+    } else if (capacity === 2) {
+      grossCost = 145000;
+      subsidy = 60000;
+      monthlySavings = 2400;
+    } else if (capacity === 3) {
+      grossCost = 195000;
+      subsidy = 78000;
+      monthlySavings = 3600;
+    } else if (capacity <= 5) {
+      grossCost = 195000 + (capacity - 3) * 60000;
+      subsidy = 78000;
+      monthlySavings = capacity * 1200;
+    } else {
+      grossCost = capacity * 55000;
+      subsidy = 78000;
+      monthlySavings = capacity * 1150;
+    }
+
+    const netCost = Math.max(0, grossCost - subsidy);
+    return { grossCost, subsidy, netCost, monthlySavings };
+  };
 
   useEffect(() => {
     loadPortalData();
@@ -79,6 +126,36 @@ export default function CustomerPortalPage() {
       alert('Error raising ticket: ' + (err.response?.data?.message || err.message));
     } finally {
       setSubmittingTicket(false);
+    }
+  };
+
+  const handleQuoteSubmit = async (e) => {
+    e.preventDefault();
+    setQuoteSubmitting(true);
+    try {
+      const profile = data?.profile || {};
+      const fullNotes = `Roof Type: ${quoteForm.roofType}. Approx monthly bill: ₹${quoteForm.monthlyBillAmount}. ${quoteForm.notes}`;
+      await leadsApi.submitPublicInquiry({
+        contactName: profile.name || 'Customer',
+        phone: profile.phone || '9876543210',
+        email: profile.email || undefined,
+        address: quoteForm.address || profile.address || profile.city || 'Address on file',
+        title: `${quoteForm.desiredCapacityKw} kW Rooftop Inquiry - ${profile.name || 'Customer'}`,
+        desiredCapacityKw: Number(quoteForm.desiredCapacityKw),
+        monthlyBillAmount: Number(quoteForm.monthlyBillAmount || 0),
+        notes: fullNotes,
+      });
+
+      setQuoteSuccess('Your solar quote request has been received! Our engineering team will review your roof and generate your proposal.');
+      setTimeout(() => {
+        setQuoteSuccess('');
+        setShowQuoteModal(false);
+        loadPortalData();
+      }, 2500);
+    } catch (err) {
+      alert('Failed to submit quote request: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setQuoteSubmitting(false);
     }
   };
 
@@ -151,12 +228,18 @@ export default function CustomerPortalPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <button
-              onClick={() => setShowTicketModal(true)}
+              onClick={() => setShowQuoteModal(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#f09e38] to-[#d4821a] hover:opacity-95 text-[#241621] rounded-xl text-xs font-black shadow-lg shadow-[#f09e38]/30 transition cursor-pointer"
             >
-              <HeadphonesIcon className="w-4 h-4 text-[#241621]" /> Raise Support Ticket
+              <Sun className="w-4 h-4 text-[#241621]" /> Request a Quote
+            </button>
+            <button
+              onClick={() => setShowTicketModal(true)}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/20 transition cursor-pointer"
+            >
+              <HeadphonesIcon className="w-4 h-4 text-[#f09e38]" /> Support Ticket
             </button>
           </div>
         </div>
@@ -348,12 +431,18 @@ export default function CustomerPortalPage() {
               )}
             </div>
           ) : (
-            <div className="odoo-glass-card p-8 rounded-3xl text-center space-y-2">
-              <Sun className="w-8 h-8 text-[#f09e38] mx-auto" />
+            <div className="odoo-glass-card p-8 rounded-3xl text-center space-y-3">
+              <Sun className="w-8 h-8 text-[#f09e38] mx-auto animate-spin-slow" />
               <p className="text-sm font-bold text-slate-800">No active installation order yet.</p>
-              <p className="text-xs text-slate-500">
-                Review your approved proposals under the Quotations tab to authorize deposit and schedule delivery.
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                Request a customized rooftop solar quote to receive an engineered proposal and get your rooftop inspection scheduled.
               </p>
+              <button
+                onClick={() => setShowQuoteModal(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#f09e38] to-[#d4821a] text-[#241621] rounded-xl text-xs font-black shadow-md transition cursor-pointer"
+              >
+                <Sun className="w-4 h-4 text-[#241621]" /> Request Rooftop Solar Quote
+              </button>
             </div>
           )}
         </div>
@@ -408,41 +497,71 @@ export default function CustomerPortalPage() {
       {/* TAB: QUOTATIONS */}
       {activeTab === 'quotes' && (
         <div className="space-y-4">
-          <h2 className="text-sm font-black text-[#241621]">Your Solar System Proposals</h2>
-          <div className="space-y-3">
-            {quotes.map((q) => (
-              <div
-                key={q.id}
-                className="p-5 rounded-2xl odoo-glass-card flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-black text-[#714B67] text-sm font-mono">{q.quoteNumber}</h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-[#F5EDF3] text-[#714B67] border border-[#EBDCE7]">
-                      {q.status}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 mt-1 font-semibold">
-                    System: {q.packageTemplate?.name || `${q.capacityKw} kW Custom Package`}
-                  </p>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Gross: ₹{Number(q.totalAmount).toLocaleString()} • Central Subsidy: ₹
-                    {Number(q.subsidyEstimate || 78000).toLocaleString()}
-                  </p>
-                </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-black text-[#241621]">Your Solar System Proposals</h2>
+              <p className="text-xs text-slate-500">Official engineering designs and cost proposals with PM Surya Ghar subsidies</p>
+            </div>
+            <button
+              onClick={() => setShowQuoteModal(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#f09e38] to-[#d4821a] text-[#241621] rounded-xl text-xs font-black shadow-md hover:opacity-95 transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 text-[#241621]" /> Request New Quote
+            </button>
+          </div>
 
-                <div className="flex items-center gap-2">
-                  <a
-                    href={quotesApi.downloadPdfUrl(q.id)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#714B67] to-[#855278] hover:opacity-95 text-white text-xs font-black rounded-xl shadow-md transition"
-                  >
-                    <Download className="w-3.5 h-3.5 text-[#f09e38]" /> Official Quotation PDF
-                  </a>
+          <div className="space-y-3">
+            {quotes.length === 0 ? (
+              <div className="p-8 text-center bg-white rounded-3xl border border-[#EBDCE7] space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-[#f09e38]/20 text-[#f09e38] flex items-center justify-center mx-auto">
+                  <Sun className="w-6 h-6" />
                 </div>
+                <h3 className="font-black text-sm text-[#241621]">No Solar Quotations Yet</h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  You don't have an active proposal yet. Request a customized rooftop solar quote with direct PM Surya Ghar DBT subsidy calculation and free site survey!
+                </p>
+                <button
+                  onClick={() => setShowQuoteModal(true)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#f09e38] to-[#d4821a] text-[#241621] rounded-xl text-xs font-black shadow-md shadow-[#f09e38]/25 hover:opacity-95 transition cursor-pointer"
+                >
+                  <Sun className="w-4 h-4 text-[#241621]" /> Request Rooftop Solar Quote
+                </button>
               </div>
-            ))}
+            ) : (
+              quotes.map((q) => (
+                <div
+                  key={q.id}
+                  className="p-5 rounded-2xl odoo-glass-card flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-black text-[#714B67] text-sm font-mono">{q.quoteNumber}</h3>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-[#F5EDF3] text-[#714B67] border border-[#EBDCE7]">
+                        {q.status}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 mt-1 font-semibold">
+                      System: {q.packageTemplate?.name || `${q.capacityKw} kW Custom Package`}
+                    </p>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Gross: ₹{Number(q.totalAmount).toLocaleString()} • Central Subsidy: ₹
+                      {Number(q.subsidyEstimate || 78000).toLocaleString()}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={quotesApi.downloadPdfUrl(q.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#714B67] to-[#855278] hover:opacity-95 text-white text-xs font-black rounded-xl shadow-md transition"
+                    >
+                      <Download className="w-3.5 h-3.5 text-[#f09e38]" /> Official Quotation PDF
+                    </a>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -525,6 +644,166 @@ export default function CustomerPortalPage() {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* Modal: Request Rooftop Solar Quote */}
+      {showQuoteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#22151F]/70 backdrop-blur-md p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#EBDCE7] space-y-4 text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EBDCE7]">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[#f09e38]/20 text-[#f09e38]">
+                  <Sun className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-black text-[#241621]">Request Rooftop Solar Quote</h2>
+                  <p className="text-[11px] text-slate-500">
+                    Client: <strong className="text-[#714b67]">{profile.name}</strong> • Phone: {profile.phone}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowQuoteModal(false);
+                  setQuoteSuccess('');
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {quoteSuccess ? (
+              <div className="py-6 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-black text-[#241621]">Quote Request Received!</h3>
+                <p className="text-xs text-slate-600 max-w-sm mx-auto">{quoteSuccess}</p>
+                <p className="text-[11px] text-emerald-700 font-bold">
+                  A SunPower solar engineer has been assigned to call you on {profile.phone} within 24 hours.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleQuoteSubmit} className="space-y-3.5">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-extrabold text-[#241621] block mb-1">Desired Capacity (kW) *</label>
+                    <select
+                      value={quoteForm.desiredCapacityKw}
+                      onChange={(e) => setQuoteForm({ ...quoteForm, desiredCapacityKw: Number(e.target.value) })}
+                      className="w-full border border-[#EBDCE7] rounded-xl p-2.5 outline-none font-bold text-xs bg-[#FAF6F9]"
+                    >
+                      <option value={1}>1 kW (Small Home / ~120 units)</option>
+                      <option value={2}>2 kW (Medium Home / ~250 units)</option>
+                      <option value={3}>3 kW (Most Popular - ₹78k Subsidy)</option>
+                      <option value={4}>4 kW (Large Residence / ~500 units)</option>
+                      <option value={5}>5 kW (Villa / Commercial)</option>
+                      <option value={10}>10 kW (Commercial / High Load)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-extrabold text-[#241621] block mb-1">Roof Type</label>
+                    <select
+                      value={quoteForm.roofType}
+                      onChange={(e) => setQuoteForm({ ...quoteForm, roofType: e.target.value })}
+                      className="w-full border border-[#EBDCE7] rounded-xl p-2.5 outline-none font-bold text-xs bg-[#FAF6F9]"
+                    >
+                      <option value="RCC Concrete Flat">RCC Concrete Flat Roof</option>
+                      <option value="Metal / Tin Sheet">Metal / Tin Sheet Roof</option>
+                      <option value="Sloped Mangalore Tile">Sloped Mangalore Tile Roof</option>
+                      <option value="Open Ground / Terrace">Open Ground / Elevated Terrace</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-extrabold text-[#241621] block mb-1">Approx. Monthly Power Bill (₹)</label>
+                    <input
+                      type="number"
+                      placeholder="4500"
+                      value={quoteForm.monthlyBillAmount}
+                      onChange={(e) => setQuoteForm({ ...quoteForm, monthlyBillAmount: e.target.value })}
+                      className="w-full border border-[#EBDCE7] rounded-xl p-2.5 outline-none font-bold text-xs bg-[#FAF6F9]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-extrabold text-[#241621] block mb-1">Installation Address / City</label>
+                    <input
+                      type="text"
+                      placeholder={profile.address || profile.city || "e.g. Jubilee Hills, Hyderabad"}
+                      value={quoteForm.address}
+                      onChange={(e) => setQuoteForm({ ...quoteForm, address: e.target.value })}
+                      className="w-full border border-[#EBDCE7] rounded-xl p-2.5 outline-none font-bold text-xs bg-[#FAF6F9]"
+                    />
+                  </div>
+                </div>
+
+                {/* LIVE SUBSIDY & INVESTMENT ESTIMATOR CARD */}
+                {(() => {
+                  const est = calculateEstimate(quoteForm.desiredCapacityKw);
+                  return (
+                    <div className="p-3.5 rounded-2xl bg-gradient-to-br from-[#FAF6F9] to-[#F5EDF3] border border-[#EBDCE7] space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-600 font-semibold flex items-center gap-1">
+                          <Calculator className="w-3.5 h-3.5 text-[#f09e38]" /> Estimated System Cost:
+                        </span>
+                        <span className="text-[#241621] font-mono font-bold">₹{est.grossCost.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                          <BadgePercent className="w-3.5 h-3.5 text-emerald-600" /> PM Surya Ghar Govt Subsidy:
+                        </span>
+                        <span className="text-emerald-700 font-mono font-black">-₹{est.subsidy.toLocaleString()}</span>
+                      </div>
+                      <div className="pt-1.5 border-t border-[#EBDCE7] flex items-center justify-between">
+                        <span className="text-[#241621] font-black">Estimated Net Investment:</span>
+                        <span className="text-[#714b67] font-mono font-black text-sm">
+                          ₹{est.netCost.toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 pt-0.5">
+                        ⚡ Est. monthly power bill savings: ~₹{est.monthlySavings.toLocaleString()}/mo • Includes free net-metering liaisoning
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                <div>
+                  <label className="font-extrabold text-[#241621] block mb-1">Special Requirements / Notes</label>
+                  <textarea
+                    rows={2}
+                    value={quoteForm.notes}
+                    onChange={(e) => setQuoteForm({ ...quoteForm, notes: e.target.value })}
+                    placeholder="Any specific battery backup or shade requirements..."
+                    className="w-full border border-[#EBDCE7] rounded-xl p-2.5 outline-none font-medium text-xs bg-[#FAF6F9]"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2.5 pt-2 border-t border-[#EBDCE7]">
+                  <button
+                    type="button"
+                    onClick={() => setShowQuoteModal(false)}
+                    className="px-4 py-2 border border-[#EBDCE7] rounded-xl text-xs font-bold text-slate-600 hover:bg-[#FAF6F9] cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={quoteSubmitting}
+                    className="px-5 py-2.5 bg-gradient-to-r from-[#f09e38] to-[#d4821a] hover:opacity-95 text-[#241621] rounded-xl text-xs font-black shadow-md shadow-[#f09e38]/25 cursor-pointer disabled:opacity-50"
+                  >
+                    {quoteSubmitting ? 'Submitting Request...' : 'Submit Quote Request (Free Survey)'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       )}
 

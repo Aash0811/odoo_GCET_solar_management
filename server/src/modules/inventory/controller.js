@@ -48,9 +48,87 @@ async function getPackageTemplate(req, res, next) {
   }
 }
 
+async function updateProduct(req, res, next) {
+  try {
+    const product = await inventoryService.updateProduct(
+      req.companyId,
+      req.params.id,
+      req.body,
+      req.user.id,
+      req
+    );
+    return res.status(200).json({
+      success: true,
+      message: "Product updated successfully.",
+      data: product,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function createProduct(req, res, next) {
+  try {
+    const product = await inventoryService.createProduct(
+      req.companyId,
+      req.body,
+      req.user.id,
+      req
+    );
+    return res.status(201).json({
+      success: true,
+      message: "Product created successfully.",
+      data: product,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function createPackageTemplate(req, res, next) {
+  try {
+    const template = await inventoryService.createPackageTemplate(
+      req.companyId,
+      req.body,
+      req.user.id,
+      req
+    );
+    return res.status(201).json({
+      success: true,
+      message: "Solar package configuration created successfully.",
+      data: template,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updatePackageTemplate(req, res, next) {
+  try {
+    const template = await inventoryService.updatePackageTemplate(
+      req.companyId,
+      req.params.id,
+      req.body,
+      req.user.id,
+      req
+    );
+    return res.status(200).json({
+      success: true,
+      message: "Solar package configuration updated successfully.",
+      data: template,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   listProducts,
   getProduct,
+  updateProduct,
+  createProduct,
   listPackageTemplates,
   getPackageTemplate,
+  createPackageTemplate,
+  updatePackageTemplate,
 };

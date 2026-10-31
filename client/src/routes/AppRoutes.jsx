@@ -16,6 +16,7 @@ import MobileInstallFormPage from '../pages/technician/MobileInstallFormPage';
 import ServiceDeskPage from '../pages/support/ServiceDeskPage';
 import FinancePage from '../pages/finance/FinancePage';
 import CustomerPortalPage from '../pages/customer/CustomerPortalPage';
+import SolarPackageConfiguratorPage from '../pages/admin/SolarPackageConfiguratorPage';
 import { useAuth } from '../hooks/useAuth';
 
 function RootRedirect() {
@@ -47,15 +48,20 @@ export default function AppRoutes() {
           {/* Admin routes */}
           <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
             <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+            <Route path="/admin/packages" element={<SolarPackageConfiguratorPage />} />
             <Route path="/finance/costing" element={<FinancePage defaultTab="costing" />} />
             <Route path="/finance/payouts" element={<FinancePage defaultTab="payouts" />} />
             <Route path="/finance/invoices" element={<FinancePage defaultTab="invoices" />} />
           </Route>
 
+          {/* Sales Quotation Studio (Salesman only) */}
+          <Route element={<ProtectedRoute allowedRoles={['SALESMAN']} />}>
+            <Route path="/sales/quotes" element={<QuoteBuilderPage />} />
+          </Route>
+
           {/* Sales & Admin routes */}
           <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SALESMAN']} />}>
             <Route path="/sales/leads" element={<LeadBoardPage />} />
-            <Route path="/sales/quotes" element={<QuoteBuilderPage />} />
             <Route path="/sales/orders" element={<OrderPaymentsPage />} />
           </Route>
 

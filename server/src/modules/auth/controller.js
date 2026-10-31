@@ -52,8 +52,22 @@ async function logout(req, res, next) {
   }
 }
 
+async function register(req, res, next) {
+  try {
+    const result = await authService.registerCustomer(req.body, req);
+    return res.status(201).json({
+      success: true,
+      message: "Customer account created successfully.",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   login,
   getMe,
   logout,
+  register,
 };

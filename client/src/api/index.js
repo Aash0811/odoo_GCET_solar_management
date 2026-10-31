@@ -2,6 +2,7 @@ import apiClient from './client';
 
 export const authApi = {
   login: (data) => apiClient.post('/auth/login', data),
+  register: (data) => apiClient.post('/auth/register', data),
   getMe: () => apiClient.get('/auth/me'),
   logout: () => apiClient.post('/auth/logout'),
 };
@@ -32,8 +33,12 @@ export const surveysApi = {
 
 export const inventoryApi = {
   getProducts: (params) => apiClient.get('/inventory/products', { params }),
+  createProduct: (data) => apiClient.post('/inventory/products', data),
+  updateProduct: (id, data) => apiClient.patch(`/inventory/products/${id}`, data),
   getTemplates: () => apiClient.get('/inventory/templates'),
   getTemplate: (id) => apiClient.get(`/inventory/templates/${id}`),
+  createTemplate: (data) => apiClient.post('/inventory/templates', data),
+  updateTemplate: (id, data) => apiClient.patch(`/inventory/templates/${id}`, data),
 };
 
 export const quotesApi = {
@@ -120,6 +125,7 @@ export const customerPortalApi = {
   getMe: (customerId) => apiClient.get('/customer-portal/me', { params: { customerId } }),
   raiseTicket: (data) => apiClient.post('/customer-portal/tickets', data),
   signJob: (jobId, data) => apiClient.post(`/customer-portal/jobs/${jobId}/sign`, data),
+  requestQuote: (data) => apiClient.post('/leads/public', data),
 };
 
 export const companyApi = {
