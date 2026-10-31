@@ -1,8 +1,50 @@
+const crypto = require("crypto");
 const prisma = require("../../config/prisma");
 const { recordAuditLog } = require("../../utils/audit");
 const { generateQuotePdf } = require("../../utils/pdf");
 
-async function getQuotes(companyId, filters = {}) {
+const MAX_AUTO_DISCOUNT = 10000; // Discounts above ₹10,000 require manager approval
+
+function calculateSubsidy(capacityKw) {
+  const kw = Number(capacityKw) || 3;
+  if (kw <= 1) return 30000;
+  if (kw <= 2) return 60000;
+  return 78000; // PM Surya Ghar Direct Benefit Transfer max ceiling is ₹78,000 for 3kW and above
+}
+
+function sanitizeQuote(quote, userRole = "ADMIN") {
+  if (!quote) return quote;
+  const isPrivileged = userRole === "ADMIN" || userRole === "DIRECTOR" || userRole === "MANAGER";
+
+  // Calculate gross margin preview
+  const lines = quote.lines || [];
+  const totalCost = lines.reduce((sum, l) => sum + Number(l.quantity) * Number(l.unitCost || 0), 0);
+  const subtotal = Number(quote.subtotal || 0);
+  const marginAmount = subtotal - totalCost;
+  const marginPercentage = subtotal > 0 ? Number(((marginAmount / subtotal) * 100).toFixed(1)) : 0;
+
+  if (isPrivileged) {
+    return {
+      ...quote,
+      totalCost,
+      marginAmount,
+      marginPercentage,
+    };
+  }
+
+  // Hide internal margin and cost price from Sales, Crew, and Customer
+  const sanitizedLines = lines.map((line) => {
+    const { unitCost, ...rest } = line;
+    return rest;
+  });
+
+  return {
+    ...quote,
+    lines: sanitizedLines,
+  };
+}
+
+async function getQuotes(companyId, filters = {}, userRole = "ADMIN") {
   const { status, leadId, customerId } = filters;
   const where = { companyId };
 
@@ -10,19 +52,22 @@ async function getQuotes(companyId, filters = {}) {
   if (leadId) where.leadId = leadId;
   if (customerId) where.customerId = customerId;
 
-  return await prisma.quote.findMany({
+  const quotes = await prisma.quote.findMany({
     where,
     include: {
       customer: { select: { id: true, name: true, phone: true, email: true } },
       packageTemplate: { select: { id: true, name: true, type: true } },
       lead: { select: { id: true, title: true, stage: true } },
       createdBy: { select: { id: true, name: true } },
+      lines: true,
     },
     orderBy: { createdAt: "desc" },
   });
+
+  return quotes.map((q) => sanitizeQuote(q, userRole));
 }
 
-async function getQuoteById(companyId, id) {
+async function getQuoteById(companyId, id, userRole = "ADMIN") {
   const quote = await prisma.quote.findFirst({
     where: { id, companyId },
     include: {
@@ -46,7 +91,33 @@ async function getQuoteById(companyId, id) {
     throw error;
   }
 
-  return quote;
+  return sanitizeQuote(quote, userRole);
+}
+
+async function getQuoteByShareToken(shareToken) {
+  const quote = await prisma.quote.findUnique({
+    where: { shareToken },
+    include: {
+      customer: true,
+      lead: true,
+      packageTemplate: true,
+      lines: {
+        include: { product: true },
+        orderBy: { sortOrder: "asc" },
+      },
+      company: {
+        select: { id: true, name: true, phone: true, email: true, address: true, gstNumber: true },
+      },
+    },
+  });
+
+  if (!quote) {
+    const error = new Error("Quotation link not found or expired.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return sanitizeQuote(quote, "CUSTOMER");
 }
 
 async function createQuote(companyId, data, actorId, req = null) {
@@ -153,6 +224,19 @@ async function createQuote(companyId, data, actorId, req = null) {
   const gstAmount = ((subtotal - discountAmount) * gstRate) / 100;
   const totalAmount = subtotal - discountAmount + gstAmount;
 
+  const subsidyAmount = data.subsidyAmount !== undefined ? Number(data.subsidyAmount) : calculateSubsidy(capacityKw);
+  const netPayable = Math.max(0, totalAmount - subsidyAmount);
+
+  // Validity Date & Share Token
+  const validDays = Number(data.validDays || 30);
+  const validUntil = new Date(Date.now() + validDays * 86400000);
+  const shareToken = crypto.randomBytes(16).toString("hex");
+
+  // Discount Approval Limit Enforcement
+  const discountApprovalRequired = discountAmount > MAX_AUTO_DISCOUNT;
+  const discountApproved = !discountApprovalRequired;
+  const initialStatus = discountApprovalRequired ? "PENDING_APPROVAL" : "DRAFT";
+
   // Auto-generate quote number
   const count = await prisma.quote.count({ where: { companyId } });
   const quoteNumber = `Q-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
@@ -177,12 +261,19 @@ async function createQuote(companyId, data, actorId, req = null) {
         gstRate,
         gstAmount,
         totalAmount,
+        subsidyAmount,
+        netPayable,
+        validUntil,
+        shareToken,
+        version: 1,
+        discountApprovalRequired,
+        discountApproved,
         subsidyNote:
           data.subsidyNote ||
-          "Eligible for Central PM Surya Ghar subsidy (up to ₹78,000 for 3kW+) subject to Discom net meter commissioning.",
+          `Eligible for Central PM Surya Ghar subsidy (₹${subsidyAmount.toLocaleString("en-IN")}) subject to Discom net meter commissioning.`,
         terms: data.terms || "10% Advance, 80% on Dispatch, 10% post commissioning.",
         notes: data.notes || null,
-        status: "DRAFT",
+        status: initialStatus,
         lines: {
           create: linesToCreate,
         },
@@ -202,17 +293,271 @@ async function createQuote(companyId, data, actorId, req = null) {
     await recordAuditLog(
       {
         companyId,
-        actorId,
+        actorId: creatorId,
         action: "CREATE",
         entityType: "Quote",
         entityId: quote.id,
-        newValue: { quoteNumber, totalAmount, capacityKw },
+        newValue: { quoteNumber, totalAmount, capacityKw, version: 1, discountAmount, discountApprovalRequired },
         req,
       },
       tx
     );
 
-    return quote;
+    return sanitizeQuote(quote, "ADMIN");
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Editable Lines (Panel brand swap, extra cable length) with Versioning & Audit
+// ─────────────────────────────────────────────────────────────
+async function updateQuoteLines(companyId, id, data, actorId, req = null) {
+  const quote = await prisma.quote.findFirst({
+    where: { id, companyId },
+    include: { lines: true },
+  });
+
+  if (!quote) {
+    const error = new Error("Quote not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (quote.status === "ACCEPTED" || quote.status === "CONVERTED") {
+    const error = new Error("Accepted or converted quotes cannot be modified.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const linesToCreate = (data.customLines || []).map((l, index) => {
+    const qty = Number(l.quantity);
+    const price = Number(l.unitPrice);
+    const cost = Number(l.unitCost || 0);
+    return {
+      productId: l.productId || null,
+      description: l.description,
+      quantity: qty,
+      unitPrice: price,
+      unitCost: cost,
+      gstRate: Number(l.gstRate || quote.gstRate || 18),
+      lineTotal: qty * price,
+      sortOrder: index,
+    };
+  });
+
+  const subtotal = linesToCreate.reduce((sum, line) => sum + line.lineTotal, 0);
+  const discountAmount = data.discountAmount !== undefined ? Number(data.discountAmount) : Number(quote.discountAmount);
+  const gstRate = Number(quote.gstRate || 18);
+  const gstAmount = ((subtotal - discountAmount) * gstRate) / 100;
+  const totalAmount = subtotal - discountAmount + gstAmount;
+
+  const subsidyAmount = data.subsidyAmount !== undefined ? Number(data.subsidyAmount) : Number(quote.subsidyAmount);
+  const netPayable = Math.max(0, totalAmount - subsidyAmount);
+
+  // Evaluate discount limit
+  const discountApprovalRequired = discountAmount > MAX_AUTO_DISCOUNT;
+  const discountApproved = !discountApprovalRequired;
+  const newStatus = discountApprovalRequired ? "PENDING_APPROVAL" : (quote.status === "PENDING_APPROVAL" ? "DRAFT" : quote.status);
+  const newVersion = quote.version + 1;
+
+  return await prisma.$transaction(async (tx) => {
+    // Delete existing lines
+    await tx.quoteLine.deleteMany({
+      where: { quoteId: id },
+    });
+
+    // Update quote header with new totals and incremented version (v2, v3, etc.)
+    const updated = await tx.quote.update({
+      where: { id },
+      data: {
+        subtotal,
+        discountAmount,
+        gstAmount,
+        totalAmount,
+        subsidyAmount,
+        netPayable,
+        version: newVersion,
+        discountApprovalRequired,
+        discountApproved,
+        status: newStatus,
+        notes: data.notes !== undefined ? data.notes : quote.notes,
+        lines: {
+          create: linesToCreate,
+        },
+      },
+      include: {
+        lines: true,
+        customer: true,
+      },
+    });
+
+    await recordAuditLog(
+      {
+        companyId,
+        actorId,
+        action: "UPDATE",
+        entityType: "Quote",
+        entityId: id,
+        oldValue: { version: quote.version, totalAmount: quote.totalAmount, linesCount: quote.lines.length },
+        newValue: { version: newVersion, totalAmount, linesCount: linesToCreate.length, discountAmount },
+        metadata: { changeType: "UPDATE_LINES" },
+        req,
+      },
+      tx
+    );
+
+    return sanitizeQuote(updated, "ADMIN");
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Discount Approval Workflow (Manager / Director only)
+// ─────────────────────────────────────────────────────────────
+async function reviewDiscount(companyId, id, { approved, notes }, actorId, req = null) {
+  const quote = await prisma.quote.findFirst({
+    where: { id, companyId },
+  });
+
+  if (!quote) {
+    const error = new Error("Quote not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const newStatus = approved ? "DRAFT" : "REJECTED";
+
+  return await prisma.$transaction(async (tx) => {
+    const updated = await tx.quote.update({
+      where: { id },
+      data: {
+        discountApproved: Boolean(approved),
+        discountApprovalRequired: false,
+        discountApprovedById: actorId,
+        status: newStatus,
+        notes: notes ? `${quote.notes ? quote.notes + "\n" : ""}[Manager Discount Note]: ${notes}` : quote.notes,
+      },
+      include: { lines: true, customer: true },
+    });
+
+    await recordAuditLog(
+      {
+        companyId,
+        actorId,
+        action: "STATUS_CHANGE",
+        entityType: "Quote",
+        entityId: id,
+        newValue: { approved, discountAmount: quote.discountAmount, status: newStatus },
+        metadata: { changeType: "DISCOUNT_APPROVAL" },
+        req,
+      },
+      tx
+    );
+
+    return sanitizeQuote(updated, "ADMIN");
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Customer Accept Online with Digital Acceptance Record
+// ─────────────────────────────────────────────────────────────
+async function acceptQuote(companyId, idOrToken, acceptanceData = {}, req = null) {
+  const where = idOrToken.length === 32 ? { shareToken: idOrToken } : { id: idOrToken, companyId };
+  const quote = await prisma.quote.findFirst({
+    where,
+    include: { lines: true },
+  });
+
+  if (!quote) {
+    const error = new Error("Quote not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Gate: cannot accept if discount is pending manager approval
+  if (quote.discountApprovalRequired && !quote.discountApproved) {
+    const error = new Error("This quotation has a high discount pending manager approval before acceptance.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const clientIp = req?.headers?.["x-forwarded-for"] || req?.socket?.remoteAddress || "127.0.0.1";
+  const userAgent = req?.headers?.["user-agent"] || "Online Browser";
+
+  return await prisma.$transaction(async (tx) => {
+    const updated = await tx.quote.update({
+      where: { id: quote.id },
+      data: {
+        status: "ACCEPTED",
+        acceptedAt: new Date(),
+        acceptanceSignature: acceptanceData.signature || null,
+        acceptanceNotes: acceptanceData.notes || null,
+        acceptanceIp: String(clientIp),
+        acceptanceUserAgent: String(userAgent),
+      },
+      include: { lines: true, customer: true },
+    });
+
+    if (quote.leadId) {
+      await tx.lead.update({
+        where: { id: quote.leadId },
+        data: { stage: "WON" },
+      });
+    }
+
+    await recordAuditLog(
+      {
+        companyId: quote.companyId,
+        action: "SIGNATURE_CAPTURED",
+        entityType: "Quote",
+        entityId: quote.id,
+        newValue: { status: "ACCEPTED", clientIp, acceptedAt: updated.acceptedAt },
+        metadata: { changeType: "CUSTOMER_ACCEPTANCE" },
+        req,
+      },
+      tx
+    );
+
+    return sanitizeQuote(updated, "CUSTOMER");
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Customer Reject Online
+// ─────────────────────────────────────────────────────────────
+async function rejectQuote(companyId, idOrToken, { reason }, req = null) {
+  const where = idOrToken.length === 32 ? { shareToken: idOrToken } : { id: idOrToken, companyId };
+  const quote = await prisma.quote.findFirst({ where });
+
+  if (!quote) {
+    const error = new Error("Quote not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    const updated = await tx.quote.update({
+      where: { id: quote.id },
+      data: {
+        status: "REJECTED",
+        rejectedAt: new Date(),
+        notes: reason ? `${quote.notes ? quote.notes + "\n" : ""}[Rejection Reason]: ${reason}` : quote.notes,
+      },
+      include: { lines: true, customer: true },
+    });
+
+    await recordAuditLog(
+      {
+        companyId: quote.companyId,
+        action: "STATUS_CHANGE",
+        entityType: "Quote",
+        entityId: quote.id,
+        newValue: { status: "REJECTED", reason },
+        metadata: { changeType: "CUSTOMER_REJECTION" },
+        req,
+      },
+      tx
+    );
+
+    return sanitizeQuote(updated, "CUSTOMER");
   });
 }
 
@@ -230,8 +575,7 @@ async function updateQuoteStatus(companyId, id, newStatus, actorId, req = null) 
       },
     });
 
-    // If accepted, lead stage is marked WON
-    if (newStatus === "ACCEPTED") {
+    if (newStatus === "ACCEPTED" && quote.leadId) {
       await tx.lead.update({
         where: { id: quote.leadId },
         data: { stage: "WON" },
@@ -252,12 +596,12 @@ async function updateQuoteStatus(companyId, id, newStatus, actorId, req = null) 
       tx
     );
 
-    return updated;
+    return sanitizeQuote(updated, "ADMIN");
   });
 }
 
 async function getQuotePdfBuffer(companyId, id) {
-  const quote = await getQuoteById(companyId, id);
+  const quote = await getQuoteById(companyId, id, "ADMIN");
   const company = await prisma.company.findUnique({
     where: { id: companyId },
   });
@@ -268,7 +612,13 @@ async function getQuotePdfBuffer(companyId, id) {
 module.exports = {
   getQuotes,
   getQuoteById,
+  getQuoteByShareToken,
   createQuote,
+  updateQuoteLines,
+  reviewDiscount,
+  acceptQuote,
+  rejectQuote,
   updateQuoteStatus,
   getQuotePdfBuffer,
+  MAX_AUTO_DISCOUNT,
 };

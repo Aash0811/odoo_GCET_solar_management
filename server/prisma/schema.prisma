@@ -48,8 +48,15 @@ enum PackageType {
   INSTALLATION
 }
 
+enum ProductType {
+  HARDWARE
+  SERVICE
+  PACKAGE
+}
+
 enum QuoteStatus {
   DRAFT
+  PENDING_APPROVAL
   SENT
   ACCEPTED
   REJECTED
@@ -436,10 +443,13 @@ model Product {
   category    String
   description String?
 
-  unit            String  @default("unit")
-  isSerialTracked Boolean @default(false)
+  unit            String      @default("unit")
+  productType     ProductType @default(HARDWARE)
+  isSerialTracked Boolean     @default(false)
 
-  warrantyYears Int @default(0)
+  warrantyYears     Int      @default(0)
+  laborHours        Decimal? @db.Decimal(8, 2)
+  isSubsidyEligible Boolean  @default(true)
 
   costPrice    Decimal @db.Decimal(12, 2)
   salePrice    Decimal @db.Decimal(12, 2)
@@ -543,6 +553,19 @@ model Quote {
 
   pdfUrl      String?
   pdfPublicId String?
+
+  version                  Int       @default(1)
+  validUntil               DateTime?
+  shareToken               String?   @unique
+  subsidyAmount            Decimal   @default(78000) @db.Decimal(12, 2)
+  netPayable               Decimal?  @db.Decimal(12, 2)
+  discountApprovalRequired Boolean   @default(false)
+  discountApproved         Boolean   @default(true)
+  discountApprovedById     String?
+  acceptanceIp             String?
+  acceptanceUserAgent      String?
+  acceptanceSignature      String?
+  acceptanceNotes          String?
 
   sentAt     DateTime?
   acceptedAt DateTime?

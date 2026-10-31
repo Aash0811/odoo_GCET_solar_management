@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { quotesApi, inventoryApi, leadsApi, ordersApi } from '../../api';
+import { useAuth } from '../../hooks/useAuth';
 import {
   FileSpreadsheet,
   Plus,
@@ -17,9 +18,20 @@ import {
   BadgePercent,
   Layers,
   FileCheck2,
+  Share2,
+  Copy,
+  Check,
+  Clock,
+  Calendar,
+  Lock,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 
 export default function QuoteBuilderPage() {
+  const { role } = useAuth();
+  const isAdmin = role === 'ADMIN';
+
   const [quotes, setQuotes] = useState([]);
   const [approvedLeads, setApprovedLeads] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -30,11 +42,14 @@ export default function QuoteBuilderPage() {
   const [activeSurvey, setActiveSurvey] = useState(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [capacityKw, setCapacityKw] = useState(3);
+  const [subsidyAmount, setSubsidyAmount] = useState(78000);
+  const [validDays, setValidDays] = useState(30);
   const [subsidyNote, setSubsidyNote] = useState('Eligible for Central PM Surya Ghar subsidy (up to ₹78,000 for 3kW+) subject to Discom net meter commissioning.');
   const [discountAmount, setDiscountAmount] = useState(0);
   const [bomLines, setBomLines] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [copiedId, setCopiedId] = useState(null);
 
   const loadData = async () => {
     try {
@@ -70,11 +85,9 @@ export default function QuoteBuilderPage() {
     if (chosen) {
       const survey = chosen.surveys?.[0];
       setActiveSurvey(survey || null);
-      if (survey?.recommendedKw) {
-        setCapacityKw(Number(survey.recommendedKw));
-      } else if (chosen.desiredCapacityKw) {
-        setCapacityKw(Number(chosen.desiredCapacityKw));
-      }
+      const kw = Number(survey?.recommendedKw || chosen.desiredCapacityKw || 3);
+      setCapacityKw(kw);
+      setSubsidyAmount(kw >= 3 ? 78000 : kw >= 2 ? 60000 : 30000);
     }
   };
 
@@ -131,9 +144,13 @@ export default function QuoteBuilderPage() {
   const gstAmount = ((subtotal - Number(discountAmount || 0)) * 18) / 100;
   const totalAmount = subtotal - Number(discountAmount || 0) + gstAmount;
 
-  // Estimated PM Surya Ghar Subsidy (Rule 10 preview)
-  const estimatedSubsidy = capacityKw >= 3 ? 78000 : capacityKw >= 2 ? 60000 : 30000;
-  const netCustomerPayable = Math.max(0, totalAmount - estimatedSubsidy);
+  // Estimated PM Surya Ghar Subsidy & Net Payable
+  const netCustomerPayable = Math.max(0, totalAmount - Number(subsidyAmount || 0));
+
+  // Internal Margin Preview (Admin & Director only)
+  const totalBOMCost = bomLines.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.unitCost || 0), 0);
+  const estimatedMargin = subtotal - totalBOMCost;
+  const estimatedMarginPct = subtotal > 0 ? ((estimatedMargin / subtotal) * 100).toFixed(1) : 0;
 
   // Approximate panels count (assuming ~540W modules = ~2 panels per kW)
   const approxPanelCount = Math.ceil(capacityKw * 1.85);
@@ -153,17 +170,45 @@ export default function QuoteBuilderPage() {
         packageTemplateId: selectedTemplateId,
         capacityKw: Number(capacityKw),
         subsidyNote,
+        subsidyAmount: Number(subsidyAmount),
         discountAmount: Number(discountAmount),
+        validDays: Number(validDays),
         customLines: bomLines,
       });
 
-      setSuccessMsg(`Quote ${res.data?.data?.quoteNumber} generated successfully!`);
+      const qNum = res.data?.data?.quoteNumber;
+      const qStatus = res.data?.data?.status;
+      setSuccessMsg(
+        qStatus === 'PENDING_APPROVAL'
+          ? `Quote ${qNum} generated in PENDING_APPROVAL status (Discount > ₹10,000 requires manager sign-off).`
+          : `Quote ${qNum} generated successfully!`
+      );
       loadData();
     } catch (err) {
       alert('Quote generation failed: ' + (err.response?.data?.message || err.message));
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleApproveDiscount = async (quoteId, approved) => {
+    try {
+      const res = await quotesApi.approveDiscount(quoteId, {
+        approved,
+        notes: approved ? 'Discount approved by Manager.' : 'Discount rejected by Manager.',
+      });
+      alert(res.data?.message || 'Discount decision recorded.');
+      loadData();
+    } catch (err) {
+      alert('Action failed: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const handleCopyShareLink = (shareToken, quoteId) => {
+    const url = `${window.location.origin}/shared-quote/${shareToken}`;
+    navigator.clipboard.writeText(url);
+    setCopiedId(quoteId);
+    setTimeout(() => setCopiedId(null), 2500);
   };
 
   const handleConvertOrder = async (quoteId) => {
@@ -422,8 +467,8 @@ export default function QuoteBuilderPage() {
               </div>
             </div>
 
-            {/* Subsidy Notice & Discount */}
-            <div className="grid sm:grid-cols-3 gap-3 pt-1">
+            {/* Subsidy Notice & Discount & Validity */}
+            <div className="grid sm:grid-cols-4 gap-3 pt-1">
               <div className="sm:col-span-2">
                 <label className="font-extrabold text-[#241621] mb-1 block">Government Subsidy Legal Note</label>
                 <input
@@ -434,6 +479,30 @@ export default function QuoteBuilderPage() {
                 />
               </div>
               <div>
+                <label className="font-extrabold text-[#241621] mb-1 block">Subsidy Benefit (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={subsidyAmount}
+                  onChange={(e) => setSubsidyAmount(Number(e.target.value))}
+                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] text-xs text-right font-bold text-[#241621] focus:ring-2 focus:ring-[#714B67] outline-none"
+                />
+              </div>
+              <div>
+                <label className="font-extrabold text-[#241621] mb-1 block">Validity (Days)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="90"
+                  value={validDays}
+                  onChange={(e) => setValidDays(Number(e.target.value))}
+                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] text-xs text-right font-bold text-[#241621] focus:ring-2 focus:ring-[#714B67] outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
                 <label className="font-extrabold text-[#241621] mb-1 block">Special Discount (₹)</label>
                 <input
                   type="number"
@@ -443,6 +512,14 @@ export default function QuoteBuilderPage() {
                   className="w-full p-2.5 rounded-xl border border-[#EBDCE7] text-xs text-right font-bold text-[#241621] focus:ring-2 focus:ring-[#714B67] outline-none"
                 />
               </div>
+              <div className="flex items-center pt-5">
+                {Number(discountAmount) > 10000 && (
+                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold flex items-center gap-1.5 w-full">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Discounts &gt; ₹10,000 will enter <strong>PENDING_APPROVAL</strong> status for Manager sign-off.</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Commercial Calculation Summary Card */}
@@ -451,12 +528,18 @@ export default function QuoteBuilderPage() {
                 <span>Subtotal (Equipment + BOS):</span>
                 <span className="font-bold">₹{subtotal.toLocaleString()}</span>
               </div>
+              {Number(discountAmount) > 0 && (
+                <div className="flex justify-between text-emerald-700 font-bold">
+                  <span>Special Discount:</span>
+                  <span className="font-mono">- ₹{Number(discountAmount).toLocaleString()}</span>
+                </div>
+              )}
               <div className="flex justify-between text-[#714B67] font-semibold">
                 <span>GST (18% Statutory Rate):</span>
                 <span className="font-bold">₹{gstAmount.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-sm font-extrabold text-[#241621] pt-1.5 border-t border-[#EBDCE7]">
-                <span>Gross Project Cost:</span>
+                <span>Total Invoice Value:</span>
                 <span className="text-[#714B67] font-black">₹{totalAmount.toLocaleString()}</span>
               </div>
 
@@ -464,9 +547,9 @@ export default function QuoteBuilderPage() {
               <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-emerald-900 font-bold">
                 <div className="flex items-center gap-1.5">
                   <BadgePercent className="w-4 h-4 text-emerald-600" />
-                  <span>Estimated PM Surya Ghar Subsidy:</span>
+                  <span>Central PM Surya Ghar Subsidy:</span>
                 </div>
-                <span className="text-emerald-700 font-black">- ₹{estimatedSubsidy.toLocaleString()}</span>
+                <span className="text-emerald-700 font-black">- ₹{Number(subsidyAmount).toLocaleString()}</span>
               </div>
 
               <div className="flex justify-between text-base font-black text-[#241621] pt-2 border-t-2 border-[#714B67]/20">
@@ -475,6 +558,30 @@ export default function QuoteBuilderPage() {
                 </span>
                 <span className="text-xl text-[#714B67] font-black">₹{netCustomerPayable.toLocaleString()}</span>
               </div>
+
+              {/* Manager & Director Internal Margin Preview */}
+              {isAdmin && (
+                <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-950 font-bold space-y-1 mt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-xs text-[#714B67] font-black">
+                      <Lock className="w-3.5 h-3.5 text-[#714B67]" /> Manager Margin Preview (Internal Only)
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-200/60 text-purple-900">
+                      Hidden from Sales & Customers
+                    </span>
+                  </div>
+                  <div className="flex justify-between font-mono text-xs pt-1 border-t border-purple-200/60">
+                    <span className="text-slate-600">Total Hardware & Labor Cost:</span>
+                    <span className="font-bold">₹{totalBOMCost.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between font-mono text-xs">
+                    <span className="text-slate-600">Estimated Gross Margin:</span>
+                    <span className={`font-black ${estimatedMargin >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      ₹{estimatedMargin.toLocaleString()} ({estimatedMarginPct}%)
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <button
@@ -483,7 +590,7 @@ export default function QuoteBuilderPage() {
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#714b67] via-[#855278] to-[#714b67] hover:opacity-95 text-white font-black text-xs shadow-lg shadow-[#714b67]/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
             >
               <FileCheck2 className="w-4 h-4 text-[#f09e38]" />
-              {submitting ? 'Generating PDF Quotation...' : 'Save & Issue Official Quotation (PDFKit)'}
+              {submitting ? 'Generating Proposal...' : 'Save & Issue Official Quotation (PDF & Share Link)'}
             </button>
           </form>
         </div>
@@ -497,18 +604,29 @@ export default function QuoteBuilderPage() {
             <span className="text-[11px] font-bold text-[#b886ad]">Odoo Certified</span>
           </div>
 
-          <div className="space-y-3 overflow-y-auto max-h-[80vh] pr-1">
+          <div className="space-y-3 overflow-y-auto max-h-[85vh] pr-1">
             {quotes.map((q) => (
               <div
                 key={q.id}
                 className="p-4 rounded-2xl odoo-glass-card space-y-3 text-xs transition-all hover:scale-[1.01]"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-black text-xs text-[#714B67] font-mono tracking-wide">{q.quoteNumber}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-black text-xs text-[#714B67] font-mono tracking-wide">{q.quoteNumber}</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-[#714B67]/10 text-[#714B67]">
+                      v{q.version || 1}
+                    </span>
+                  </div>
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                       q.status === 'CONVERTED'
                         ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        : q.status === 'ACCEPTED'
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : q.status === 'PENDING_APPROVAL'
+                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                        : q.status === 'REJECTED'
+                        ? 'bg-rose-100 text-rose-800 border border-rose-300'
                         : 'bg-[#F5EDF3] text-[#714B67] border border-[#EBDCE7]'
                     }`}
                   >
@@ -527,22 +645,99 @@ export default function QuoteBuilderPage() {
                     </span>
                     <span className="text-[10px] font-semibold text-[#b886ad]">(Incl. 18% GST)</span>
                   </div>
+                  <div className="text-[11px] text-slate-500 font-medium mt-1">
+                    Subsidy: <strong className="text-emerald-700">₹{Number(q.subsidyAmount || 78000).toLocaleString()}</strong> • Net: <strong className="text-[#714B67]">₹{Number(q.netPayable || Math.max(0, q.totalAmount - (q.subsidyAmount || 78000))).toLocaleString()}</strong>
+                  </div>
                 </div>
 
-                <div className="pt-2.5 border-t border-[#EBDCE7] flex items-center justify-between">
-                  <a
-                    href={quotesApi.downloadPdfUrl(q.id)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1.5 text-[#714B67] font-extrabold hover:text-[#935F87] transition"
-                  >
-                    <Download className="w-3.5 h-3.5 text-[#f09e38]" /> Download PDF
-                  </a>
+                {/* Validity and Margin */}
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-[#EBDCE7]/60">
+                  <span className="text-slate-500 flex items-center gap-1">
+                    <Calendar className="w-3 h-3 text-slate-400" />
+                    Valid: {q.validUntil ? new Date(q.validUntil).toLocaleDateString() : '30 Days'}
+                  </span>
+                  {isAdmin && q.marginAmount !== undefined && (
+                    <span className="font-mono text-[10px] font-bold text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                      Margin: ₹{Number(q.marginAmount).toLocaleString()} ({q.marginPercentage}%)
+                    </span>
+                  )}
+                </div>
+
+                {/* High Discount Approval Gate Banner for Manager */}
+                {q.status === 'PENDING_APPROVAL' && (
+                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+                    <div className="text-[11px] text-amber-900 font-bold flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Discount ₹{Number(q.discountAmount).toLocaleString()} exceeds ₹10k limit.</span>
+                    </div>
+                    {isAdmin ? (
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => handleApproveDiscount(q.id, true)}
+                          className="flex-1 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-[10px] transition cursor-pointer"
+                        >
+                          Approve Discount
+                        </button>
+                        <button
+                          onClick={() => handleApproveDiscount(q.id, false)}
+                          className="flex-1 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-[10px] transition cursor-pointer"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-amber-700 italic block">
+                        Awaiting Manager / Director sign-off before customer can accept.
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Accepted Online digital details */}
+                {q.status === 'ACCEPTED' && q.acceptedAt && (
+                  <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-800 font-semibold flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Digitally Accepted
+                    </span>
+                    <span className="font-mono text-slate-500">IP: {q.acceptanceIp || 'Online'}</span>
+                  </div>
+                )}
+
+                <div className="pt-2.5 border-t border-[#EBDCE7] flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={quotesApi.downloadPdfUrl(q.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1 text-[#714B67] font-extrabold hover:text-[#935F87] transition"
+                      title="Download PDF"
+                    >
+                      <Download className="w-3.5 h-3.5 text-[#f09e38]" /> PDF
+                    </a>
+                    {q.shareToken && (
+                      <button
+                        onClick={() => handleCopyShareLink(q.shareToken, q.id)}
+                        className="flex items-center gap-1 text-slate-600 hover:text-[#714B67] font-bold text-[11px] transition cursor-pointer"
+                        title="Copy customer online view link"
+                      >
+                        {copiedId === q.id ? (
+                          <span className="text-emerald-700 font-extrabold flex items-center gap-1">
+                            <Check className="w-3 h-3 text-emerald-600" /> Copied!
+                          </span>
+                        ) : (
+                          <>
+                            <Share2 className="w-3.5 h-3.5 text-blue-500" /> Share
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
 
                   {q.status !== 'CONVERTED' ? (
                     <button
                       onClick={() => handleConvertOrder(q.id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] shadow-sm shadow-emerald-600/30 transition cursor-pointer"
+                      disabled={q.status === 'PENDING_APPROVAL'}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] shadow-sm shadow-emerald-600/30 transition cursor-pointer disabled:opacity-40"
                     >
                       Convert to Order <ArrowRight className="w-3 h-3" />
                     </button>

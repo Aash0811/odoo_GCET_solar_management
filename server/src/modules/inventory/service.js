@@ -1,11 +1,39 @@
 const prisma = require("../../config/prisma");
 const { recordAuditLog } = require("../../utils/audit");
 
-async function getProducts(companyId, filters = {}) {
-  const { category, isSerialTracked, lowStock } = filters;
+function sanitizeProduct(product, userRole) {
+  if (!product) return product;
+  const isPrivileged = userRole === "ADMIN" || userRole === "DIRECTOR";
+  if (!isPrivileged) {
+    const { costPrice, ...rest } = product;
+    return rest;
+  }
+  return product;
+}
+
+function sanitizePackageTemplate(template, userRole) {
+  if (!template) return template;
+  const isPrivileged = userRole === "ADMIN" || userRole === "DIRECTOR";
+  if (!isPrivileged) {
+    if (template.bomLines && Array.isArray(template.bomLines)) {
+      return {
+        ...template,
+        bomLines: template.bomLines.map((line) => ({
+          ...line,
+          product: line.product ? sanitizeProduct(line.product, userRole) : line.product,
+        })),
+      };
+    }
+  }
+  return template;
+}
+
+async function getProducts(companyId, filters = {}, userRole = "ADMIN") {
+  const { category, productType, isSerialTracked, lowStock } = filters;
   const where = { companyId, isActive: true };
 
   if (category) where.category = category;
+  if (productType) where.productType = productType;
   if (isSerialTracked !== undefined) where.isSerialTracked = isSerialTracked === "true";
 
   const products = await prisma.product.findMany({
@@ -13,14 +41,14 @@ async function getProducts(companyId, filters = {}) {
     orderBy: { name: "asc" },
   });
 
-  if (lowStock === "true") {
-    return products.filter((p) => Number(p.stockQty) <= Number(p.reorderLevel));
-  }
+  const filtered = lowStock === "true"
+    ? products.filter((p) => Number(p.stockQty) <= Number(p.reorderLevel))
+    : products;
 
-  return products;
+  return filtered.map((p) => sanitizeProduct(p, userRole));
 }
 
-async function getProductById(companyId, id) {
+async function getProductById(companyId, id, userRole = "ADMIN") {
   const product = await prisma.product.findFirst({
     where: { id, companyId },
   });
@@ -31,11 +59,11 @@ async function getProductById(companyId, id) {
     throw error;
   }
 
-  return product;
+  return sanitizeProduct(product, userRole);
 }
 
-async function getPackageTemplates(companyId) {
-  return await prisma.packageTemplate.findMany({
+async function getPackageTemplates(companyId, userRole = "ADMIN") {
+  const templates = await prisma.packageTemplate.findMany({
     where: { companyId, isActive: true },
     include: {
       bomLines: {
@@ -46,9 +74,11 @@ async function getPackageTemplates(companyId) {
     },
     orderBy: { name: "asc" },
   });
+
+  return templates.map((t) => sanitizePackageTemplate(t, userRole));
 }
 
-async function getPackageTemplateById(companyId, id) {
+async function getPackageTemplateById(companyId, id, userRole = "ADMIN") {
   const template = await prisma.packageTemplate.findFirst({
     where: { id, companyId },
     include: {
@@ -66,7 +96,7 @@ async function getPackageTemplateById(companyId, id) {
     throw error;
   }
 
-  return template;
+  return sanitizePackageTemplate(template, userRole);
 }
 
 async function updateProduct(companyId, id, data, actorId = null, req = null) {
@@ -81,13 +111,20 @@ async function updateProduct(companyId, id, data, actorId = null, req = null) {
   }
 
   const updateData = {};
-  if (data.name !== undefined) updateData.name = data.name;
-  if (data.category !== undefined) updateData.category = data.category;
-  if (data.description !== undefined) updateData.description = data.description;
+  if (data.name !== undefined) updateData.name = data.name.trim();
+  if (data.category !== undefined) updateData.category = data.category.trim();
+  if (data.productType !== undefined) updateData.productType = data.productType;
+  if (data.description !== undefined) updateData.description = data.description ? data.description.trim() : null;
+  if (data.unit !== undefined) updateData.unit = data.unit;
+  if (data.isSerialTracked !== undefined) updateData.isSerialTracked = Boolean(data.isSerialTracked);
   if (data.warrantyYears !== undefined) updateData.warrantyYears = Number(data.warrantyYears);
+  if (data.laborHours !== undefined) updateData.laborHours = data.laborHours !== null ? Number(data.laborHours) : null;
+  if (data.isSubsidyEligible !== undefined) updateData.isSubsidyEligible = Boolean(data.isSubsidyEligible);
   if (data.costPrice !== undefined) updateData.costPrice = Number(data.costPrice);
   if (data.salePrice !== undefined) updateData.salePrice = Number(data.salePrice);
   if (data.stockQty !== undefined) updateData.stockQty = Number(data.stockQty);
+  if (data.reorderLevel !== undefined) updateData.reorderLevel = Number(data.reorderLevel);
+  if (data.gstRate !== undefined) updateData.gstRate = Number(data.gstRate);
   if (data.isActive !== undefined) updateData.isActive = Boolean(data.isActive);
 
   const updated = await prisma.product.update({
@@ -111,7 +148,24 @@ async function updateProduct(companyId, id, data, actorId = null, req = null) {
 }
 
 async function createProduct(companyId, data, actorId = null, req = null) {
-  const { sku, name, category, costPrice, salePrice, warrantyYears = 0, isSerialTracked = false, unit = "unit", description } = data;
+  const {
+    sku,
+    name,
+    category,
+    productType = "HARDWARE",
+    costPrice,
+    salePrice,
+    warrantyYears = 0,
+    isSerialTracked = false,
+    laborHours = null,
+    isSubsidyEligible = true,
+    gstRate = 18,
+    unit = "unit",
+    stockQty = 0,
+    reorderLevel = 0,
+    description,
+  } = data;
+
   if (!sku || !name || !category || costPrice === undefined || salePrice === undefined) {
     const error = new Error("SKU, Name, Category, Cost Price, and Sale Price are required.");
     error.statusCode = 400;
@@ -133,12 +187,18 @@ async function createProduct(companyId, data, actorId = null, req = null) {
       sku: sku.trim().toUpperCase(),
       name: name.trim(),
       category: category.trim(),
+      productType: productType || "HARDWARE",
       description: description ? description.trim() : null,
       costPrice: Number(costPrice),
       salePrice: Number(salePrice),
       warrantyYears: Number(warrantyYears),
       isSerialTracked: Boolean(isSerialTracked),
+      laborHours: laborHours !== null && laborHours !== undefined ? Number(laborHours) : null,
+      isSubsidyEligible: Boolean(isSubsidyEligible),
+      gstRate: Number(gstRate),
       unit: unit || "unit",
+      stockQty: Number(stockQty),
+      reorderLevel: Number(reorderLevel),
     },
   });
 

@@ -2,7 +2,7 @@ const quotesService = require("./service");
 
 async function listQuotes(req, res, next) {
   try {
-    const quotes = await quotesService.getQuotes(req.companyId, req.query);
+    const quotes = await quotesService.getQuotes(req.companyId, req.query, req.user?.role);
     return res.status(200).json({
       success: true,
       data: quotes,
@@ -14,7 +14,19 @@ async function listQuotes(req, res, next) {
 
 async function getQuote(req, res, next) {
   try {
-    const quote = await quotesService.getQuoteById(req.companyId, req.params.id);
+    const quote = await quotesService.getQuoteById(req.companyId, req.params.id, req.user?.role);
+    return res.status(200).json({
+      success: true,
+      data: quote,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getSharedQuote(req, res, next) {
+  try {
+    const quote = await quotesService.getQuoteByShareToken(req.params.token);
     return res.status(200).json({
       success: true,
       data: quote,
@@ -26,10 +38,88 @@ async function getQuote(req, res, next) {
 
 async function createQuote(req, res, next) {
   try {
-    const quote = await quotesService.createQuote(req.companyId, req.body, req.user.id, req);
+    const quote = await quotesService.createQuote(req.companyId, req.body, req.user?.id, req);
     return res.status(201).json({
       success: true,
-      message: `Quote ${quote.quoteNumber} created with auto-expanded BOM lines.`,
+      message: `Quote ${quote.quoteNumber} (v${quote.version}) created.`,
+      data: quote,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateQuoteLines(req, res, next) {
+  try {
+    const quote = await quotesService.updateQuoteLines(req.companyId, req.params.id, req.body, req.user?.id, req);
+    return res.status(200).json({
+      success: true,
+      message: `Quote ${quote.quoteNumber} updated to version v${quote.version}.`,
+      data: quote,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function approveDiscount(req, res, next) {
+  try {
+    const quote = await quotesService.reviewDiscount(req.companyId, req.params.id, req.body, req.user?.id, req);
+    return res.status(200).json({
+      success: true,
+      message: req.body.approved ? "Discount approved successfully." : "Discount request rejected.",
+      data: quote,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function acceptQuote(req, res, next) {
+  try {
+    const quote = await quotesService.acceptQuote(req.companyId, req.params.id, req.body, req);
+    return res.status(200).json({
+      success: true,
+      message: "Quotation accepted online! Digital acceptance record created.",
+      data: quote,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function acceptSharedQuote(req, res, next) {
+  try {
+    const quote = await quotesService.acceptQuote(null, req.params.token, req.body, req);
+    return res.status(200).json({
+      success: true,
+      message: "Quotation accepted online! Digital acceptance record created.",
+      data: quote,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function rejectQuote(req, res, next) {
+  try {
+    const quote = await quotesService.rejectQuote(req.companyId, req.params.id, req.body, req);
+    return res.status(200).json({
+      success: true,
+      message: "Quotation marked as rejected.",
+      data: quote,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function rejectSharedQuote(req, res, next) {
+  try {
+    const quote = await quotesService.rejectQuote(null, req.params.token, req.body, req);
+    return res.status(200).json({
+      success: true,
+      message: "Quotation marked as rejected.",
       data: quote,
     });
   } catch (error) {
@@ -39,7 +129,7 @@ async function createQuote(req, res, next) {
 
 async function updateQuoteStatus(req, res, next) {
   try {
-    const quote = await quotesService.updateQuoteStatus(req.companyId, req.params.id, req.body.status, req.user.id, req);
+    const quote = await quotesService.updateQuoteStatus(req.companyId, req.params.id, req.body.status, req.user?.id, req);
     return res.status(200).json({
       success: true,
       message: `Quote status updated to ${quote.status}.`,
@@ -64,7 +154,14 @@ async function downloadQuotePdf(req, res, next) {
 module.exports = {
   listQuotes,
   getQuote,
+  getSharedQuote,
   createQuote,
+  updateQuoteLines,
+  approveDiscount,
+  acceptQuote,
+  acceptSharedQuote,
+  rejectQuote,
+  rejectSharedQuote,
   updateQuoteStatus,
   downloadQuotePdf,
 };

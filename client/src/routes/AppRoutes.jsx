@@ -7,6 +7,7 @@ import DashboardLayout from '../layouts/DashboardLayout';
 import LoginPage from '../pages/auth/LoginPage';
 import SharedDashboardPage from '../pages/public/SharedDashboardPage';
 import CompanyWebsitePage from '../pages/public/CompanyWebsitePage';
+import SharedQuoteViewPage from '../pages/public/SharedQuoteViewPage';
 import AdminDashboardPage from '../pages/admin/AdminDashboardPage';
 import LeadBoardPage from '../pages/sales/LeadBoardPage';
 import QuoteBuilderPage from '../pages/sales/QuoteBuilderPage';
@@ -42,10 +43,11 @@ export default function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/app" element={<RootRedirect />} />
 
-      {/* Side Pages: Company Website & Shared Dashboard */}
+      {/* Side Pages: Company Website, Shared Dashboard & Public Shared Quotation */}
       <Route path="/website" element={<CompanyWebsitePage />} />
       <Route path="/company-website" element={<CompanyWebsitePage />} />
       <Route path="/shared-dashboard" element={<SharedDashboardPage />} />
+      <Route path="/shared-quote/:token" element={<SharedQuoteViewPage />} />
 
       {/* Protected Routes inside DashboardLayout */}
       <Route element={<ProtectedRoute />}>
@@ -53,10 +55,14 @@ export default function AppRoutes() {
           {/* Admin routes */}
           <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
             <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-            <Route path="/admin/packages" element={<SolarPackageConfiguratorPage />} />
             <Route path="/finance/costing" element={<FinancePage defaultTab="costing" />} />
             <Route path="/finance/payouts" element={<FinancePage defaultTab="payouts" />} />
             <Route path="/finance/invoices" element={<FinancePage defaultTab="invoices" />} />
+          </Route>
+
+          {/* Master Product & Package Catalogue (Admin edits, others read-only) */}
+          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SALESMAN', 'TECHNICIAN', 'WAREHOUSE', 'SUPPORT']} />}>
+            <Route path="/admin/packages" element={<SolarPackageConfiguratorPage />} />
           </Route>
 
           {/* Sales Quotation Studio (Salesman only) */}

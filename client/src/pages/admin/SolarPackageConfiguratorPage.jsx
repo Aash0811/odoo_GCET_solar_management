@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { inventoryApi } from '../../api';
+import { useAuth } from '../../hooks/useAuth';
 import {
   Sun,
   Battery,
@@ -25,6 +26,12 @@ import {
   ToggleLeft,
   ToggleRight,
   Copy,
+  Shield,
+  ShieldCheck,
+  Lock,
+  Clock,
+  QrCode,
+  Tag,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
@@ -37,6 +44,12 @@ const PACKAGE_TYPES = [
   { value: 'COMMERCIAL', label: 'Commercial / Industrial' },
 ];
 
+const PRODUCT_TYPES = [
+  { value: 'HARDWARE', label: 'Hardware', color: 'bg-blue-100 text-blue-800' },
+  { value: 'SERVICE',  label: 'Service',  color: 'bg-purple-100 text-purple-800' },
+  { value: 'PACKAGE',  label: 'Package (Kit)', color: 'bg-amber-100 text-amber-800' },
+];
+
 const PRODUCT_CATEGORIES = [
   { value: 'PANEL',     label: 'Solar PV Panel',       color: 'bg-amber-100 text-amber-800' },
   { value: 'INVERTER',  label: 'Inverter',             color: 'bg-purple-100 text-purple-800' },
@@ -45,7 +58,8 @@ const PRODUCT_CATEGORIES = [
   { value: 'CABLE',     label: 'Cables & Wiring',      color: 'bg-slate-100 text-slate-700' },
   { value: 'MCBFUSE',   label: 'MCB / ACDB / DCDB',   color: 'bg-rose-100 text-rose-800' },
   { value: 'EARTHING',  label: 'Earthing & Lightning', color: 'bg-teal-100 text-teal-800' },
-  { value: 'MISC',      label: 'Misc / Labour',        color: 'bg-gray-100 text-gray-700' },
+  { value: 'SERVICE',   label: 'Installation & Labour', color: 'bg-indigo-100 text-indigo-800' },
+  { value: 'MISC',      label: 'Misc Hardware',        color: 'bg-gray-100 text-gray-700' },
 ];
 
 const CAT_COLOR = Object.fromEntries(PRODUCT_CATEGORIES.map(c => [c.value, c.color]));
@@ -81,11 +95,15 @@ const emptyProductForm = () => ({
   sku: '',
   name: '',
   category: 'PANEL',
+  productType: 'HARDWARE',
   description: '',
   costPrice: '',
   salePrice: '',
-  gstRate: 12,
+  gstRate: 18,
   warrantyYears: 5,
+  isSerialTracked: false,
+  laborHours: '',
+  isSubsidyEligible: true,
   unit: 'unit',
   stockQty: 0,
   reorderLevel: 5,
@@ -95,6 +113,9 @@ const emptyProductForm = () => ({
 // Main Component
 // ─────────────────────────────────────────────────────────────
 export default function SolarPackageConfiguratorPage() {
+  const { role } = useAuth();
+  const isAdmin = role === 'ADMIN';
+
   const [activeTab, setActiveTab]           = useState('packages');
   const [loading, setLoading]               = useState(true);
   const [templates, setTemplates]           = useState([]);
@@ -316,11 +337,15 @@ export default function SolarPackageConfiguratorPage() {
         sku: p.sku,
         name: p.name,
         category: p.category,
+        productType: p.productType || (p.category === 'SERVICE' ? 'SERVICE' : 'HARDWARE'),
         description: p.description || '',
         costPrice: Number(p.costPrice || 0),
         salePrice: Number(p.salePrice || 0),
-        gstRate: Number(p.gstRate || 12),
+        gstRate: Number(p.gstRate || 18),
         warrantyYears: Number(p.warrantyYears || 0),
+        isSerialTracked: Boolean(p.isSerialTracked),
+        laborHours: p.laborHours ? Number(p.laborHours) : '',
+        isSubsidyEligible: p.isSubsidyEligible !== false,
         unit: p.unit || 'unit',
         stockQty: Number(p.stockQty || 0),
         reorderLevel: Number(p.reorderLevel || 5),
@@ -342,11 +367,15 @@ export default function SolarPackageConfiguratorPage() {
         sku: data.sku.trim().toUpperCase(),
         name: data.name.trim(),
         category: data.category,
-        description: data.description.trim() || null,
+        productType: data.productType || 'HARDWARE',
+        description: data.description ? data.description.trim() : null,
         costPrice: Number(data.costPrice),
         salePrice: Number(data.salePrice),
         gstRate: Number(data.gstRate),
         warrantyYears: Number(data.warrantyYears),
+        isSerialTracked: Boolean(data.isSerialTracked),
+        laborHours: data.laborHours ? Number(data.laborHours) : null,
+        isSubsidyEligible: Boolean(data.isSubsidyEligible),
         unit: data.unit,
         stockQty: Number(data.stockQty),
         reorderLevel: Number(data.reorderLevel),
@@ -421,18 +450,26 @@ export default function SolarPackageConfiguratorPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
-            <button
-              onClick={openCreatePackage}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#f09e38] to-[#d4821a] hover:opacity-95 text-[#241621] rounded-xl text-xs font-black shadow-lg transition cursor-pointer"
-            >
-              <Plus className="w-4 h-4" /> New Solar Package
-            </button>
-            <button
-              onClick={openCreateProduct}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/20 transition cursor-pointer"
-            >
-              <Package className="w-4 h-4 text-[#f09e38]" /> Add Component
-            </button>
+            {isAdmin ? (
+              <>
+                <button
+                  onClick={openCreatePackage}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#f09e38] to-[#d4821a] hover:opacity-95 text-[#241621] rounded-xl text-xs font-black shadow-lg transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" /> New Solar Package
+                </button>
+                <button
+                  onClick={openCreateProduct}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/20 transition cursor-pointer"
+                >
+                  <Package className="w-4 h-4 text-[#f09e38]" /> Add Component
+                </button>
+              </>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/15 text-white font-bold text-xs border border-white/20 shadow-xs">
+                <Lock className="w-3.5 h-3.5 text-amber-300" /> Read-Only Catalogue (Cost Prices Hidden)
+              </span>
+            )}
             <button
               onClick={loadData}
               className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl border border-white/20 transition cursor-pointer"
@@ -709,22 +746,23 @@ export default function SolarPackageConfiguratorPage() {
                 <thead className="bg-[#FAF6F9] text-[#714b67] font-black uppercase text-[10px] border-b border-[#EBDCE7]">
                   <tr>
                     <th className="py-3 px-4">SKU</th>
-                    <th className="py-3 px-4">Component Name</th>
-                    <th className="py-3 px-4">Category</th>
-                    <th className="py-3 px-4 text-right">Cost (₹)</th>
-                    <th className="py-3 px-4 text-right">Sale (₹)</th>
-                    <th className="py-3 px-4 text-right">Margin</th>
-                    <th className="py-3 px-4 text-center">GST %</th>
+                    <th className="py-3 px-4">Component / Service Name</th>
+                    <th className="py-3 px-4">Type & Category</th>
+                    <th className="py-3 px-4 text-center">Tracking & Flags</th>
                     <th className="py-3 px-4 text-center">Warranty</th>
+                    {isAdmin && <th className="py-3 px-4 text-right">Cost (₹)</th>}
+                    <th className="py-3 px-4 text-right">Sale (₹)</th>
+                    {isAdmin && <th className="py-3 px-4 text-right">Margin</th>}
+                    <th className="py-3 px-4 text-center">GST %</th>
                     <th className="py-3 px-4 text-center">Stock</th>
                     <th className="py-3 px-4 text-center">Status</th>
-                    <th className="py-3 px-4 text-center">Actions</th>
+                    {isAdmin && <th className="py-3 px-4 text-center">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EBDCE7] text-slate-700">
                   {filteredProducts.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="py-10 text-center text-slate-400 italic">
+                      <td colSpan={isAdmin ? 12 : 9} className="py-10 text-center text-slate-400 italic">
                         No components match your filter.
                       </td>
                     </tr>
@@ -738,30 +776,72 @@ export default function SolarPackageConfiguratorPage() {
                     return (
                       <tr key={p.id} className={`hover:bg-[#FAF6F9]/60 transition ${!p.isActive ? 'opacity-50' : ''}`}>
                         <td className="py-3 px-4 font-mono font-bold text-[#714b67] whitespace-nowrap">{p.sku}</td>
-                        <td className="py-3 px-4 font-semibold text-[#241621] max-w-[200px]">
+                        <td className="py-3 px-4 font-semibold text-[#241621] max-w-[220px]">
                           <span className="line-clamp-2">{p.name}</span>
                           {p.description && (
                             <span className="block text-[10px] text-slate-400 line-clamp-1">{p.description}</span>
                           )}
+                          {p.laborHours && (
+                            <span className="inline-block mt-0.5 text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                              ⏱️ {p.laborHours}h Labor
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${CAT_COLOR[p.category] || 'bg-gray-100 text-gray-600'}`}>
-                            {p.category}
-                          </span>
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                              p.productType === 'SERVICE' ? 'bg-purple-100 text-purple-800' :
+                              p.productType === 'PACKAGE' ? 'bg-amber-100 text-amber-800' :
+                              'bg-blue-100 text-blue-800'
+                            }`}>
+                              {p.productType || 'HARDWARE'}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${CAT_COLOR[p.category] || 'bg-gray-100 text-gray-600'}`}>
+                              {p.category}
+                            </span>
+                          </div>
                         </td>
-                        <td className="py-3 px-4 text-right font-mono text-slate-600">₹{fmt(cost)}</td>
+                        <td className="py-3 px-4 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            {p.isSerialTracked ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-200">
+                                <QrCode className="w-3 h-3 text-blue-600" /> Serial Tracked
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                Qty Only
+                              </span>
+                            )}
+                            {p.isSubsidyEligible && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                PM Surya Ghar
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-center font-bold text-slate-700">
+                          {p.warrantyYears ? (
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 font-black font-mono">
+                              {p.warrantyYears} yr
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                        {isAdmin && (
+                          <td className="py-3 px-4 text-right font-mono text-slate-600 font-medium">₹{fmt(cost)}</td>
+                        )}
                         <td className="py-3 px-4 text-right font-mono font-bold text-[#241621]">₹{fmt(sale)}</td>
-                        <td className="py-3 px-4 text-right">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black font-mono ${
-                            margin >= 30 ? 'bg-emerald-100 text-emerald-800' :
-                            margin >= 15 ? 'bg-amber-100 text-amber-800' :
-                            'bg-rose-100 text-rose-800'
-                          }`}>{margin}%</span>
-                        </td>
-                        <td className="py-3 px-4 text-center font-bold text-slate-600">{p.gstRate ?? 12}%</td>
-                        <td className="py-3 px-4 text-center font-bold text-slate-600">
-                          {p.warrantyYears ? `${p.warrantyYears} yr` : '—'}
-                        </td>
+                        {isAdmin && (
+                          <td className="py-3 px-4 text-right">
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black font-mono ${
+                              margin >= 30 ? 'bg-emerald-100 text-emerald-800' :
+                              margin >= 15 ? 'bg-amber-100 text-amber-800' :
+                              'bg-rose-100 text-rose-800'
+                            }`}>{margin}%</span>
+                          </td>
+                        )}
+                        <td className="py-3 px-4 text-center font-bold text-slate-600">{p.gstRate ?? 18}%</td>
                         <td className="py-3 px-4 text-center">
                           <span className={`font-mono font-bold ${lowStock ? 'text-rose-600' : 'text-slate-700'}`}>
                             {p.stockQty ?? 0}
@@ -775,26 +855,28 @@ export default function SolarPackageConfiguratorPage() {
                             {p.isActive ? 'Active' : 'Inactive'}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              onClick={() => openEditProduct(p)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#FAF6F9] hover:bg-[#714b67] text-[#714b67] hover:text-white border border-[#EBDCE7] rounded-lg text-[10px] font-bold transition cursor-pointer"
-                            >
-                              <Edit2 className="w-3 h-3" /> Edit
-                            </button>
-                            <button
-                              onClick={() => handleToggleProductActive(p)}
-                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
-                                p.isActive
-                                  ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'
-                                  : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'
-                              }`}
-                            >
-                              {p.isActive ? <><ToggleRight className="w-3 h-3" /> Deactivate</> : <><ToggleLeft className="w-3 h-3" /> Activate</>}
-                            </button>
-                          </div>
-                        </td>
+                        {isAdmin && (
+                          <td className="py-3 px-4 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => openEditProduct(p)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#FAF6F9] hover:bg-[#714b67] text-[#714b67] hover:text-white border border-[#EBDCE7] rounded-lg text-[10px] font-bold transition cursor-pointer"
+                              >
+                                <Edit2 className="w-3 h-3" /> Edit
+                              </button>
+                              <button
+                                onClick={() => handleToggleProductActive(p)}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                                  p.isActive
+                                    ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'
+                                    : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'
+                                }`}
+                              >
+                                {p.isActive ? <><ToggleRight className="w-3 h-3" /> Deactivate</> : <><ToggleLeft className="w-3 h-3" /> Activate</>}
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -1164,6 +1246,21 @@ export default function SolarPackageConfiguratorPage() {
                   )}
                 </div>
                 <div>
+                  <label className="font-extrabold text-[#241621] block mb-1">Product Type *</label>
+                  <select
+                    value={productEditor.data.productType || 'HARDWARE'}
+                    onChange={e => ppf('productType', e.target.value)}
+                    className="w-full border border-[#EBDCE7] rounded-xl p-2.5 outline-none font-bold text-xs bg-[#FAF6F9] focus:ring-1 focus:ring-[#714b67]"
+                  >
+                    {PRODUCT_TYPES.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="font-extrabold text-[#241621] block mb-1">Category *</label>
                   <select
                     value={productEditor.data.category}
@@ -1175,10 +1272,22 @@ export default function SolarPackageConfiguratorPage() {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="font-extrabold text-[#241621] block mb-1">Unit of Measure</label>
+                  <select
+                    value={productEditor.data.unit}
+                    onChange={e => ppf('unit', e.target.value)}
+                    className="w-full border border-[#EBDCE7] rounded-xl p-2.5 outline-none font-bold text-xs bg-[#FAF6F9] focus:ring-1 focus:ring-[#714b67]"
+                  >
+                    {['unit', 'set', 'metre', 'kg', 'lot', 'service'].map(u => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div>
-                <label className="font-extrabold text-[#241621] block mb-1">Component Name *</label>
+                <label className="font-extrabold text-[#241621] block mb-1">Component / Service Name *</label>
                 <input
                   type="text"
                   required
@@ -1188,6 +1297,59 @@ export default function SolarPackageConfiguratorPage() {
                   className="w-full border border-[#EBDCE7] rounded-xl p-2.5 outline-none font-bold text-xs bg-[#FAF6F9] focus:ring-1 focus:ring-[#714b67]"
                 />
               </div>
+
+              {/* Per-component Flags: Serial-Tracked & Subsidy Eligible */}
+              <div className="p-3 rounded-2xl bg-[#FAF6F9] border border-[#EBDCE7] space-y-2">
+                <span className="text-[10px] font-black uppercase text-[#714b67] tracking-wider block">
+                  ⚙️ Component Tracking & Subsidy Flags
+                </span>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-[#241621]">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(productEditor.data.isSerialTracked)}
+                      onChange={e => ppf('isSerialTracked', e.target.checked)}
+                      className="w-4 h-4 rounded text-[#714b67] focus:ring-[#714b67] cursor-pointer"
+                    />
+                    <span>Serial-Tracked</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer font-bold text-[#241621]">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(productEditor.data.isSubsidyEligible)}
+                      onChange={e => ppf('isSubsidyEligible', e.target.checked)}
+                      className="w-4 h-4 rounded text-[#714b67] focus:ring-[#714b67] cursor-pointer"
+                    />
+                    <span>PM Surya Ghar Eligible</span>
+                  </label>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  {productEditor.data.isSerialTracked
+                    ? '• Requires individual barcode/QR scan before leaving warehouse (e.g. Inverters, Batteries, PV Panels).'
+                    : '• Quantity-only item: dispatches by count or meters (e.g. Cables, Fasteners, Earthing rods).'}
+                </p>
+              </div>
+
+              {/* Service Labor Hours if Service product */}
+              {(productEditor.data.productType === 'SERVICE' || productEditor.data.category === 'SERVICE') && (
+                <div className="p-3 rounded-2xl bg-indigo-50/70 border border-indigo-200">
+                  <label className="font-extrabold text-indigo-950 block mb-1">
+                    ⏱️ Standard Labor / Installation Hours
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    placeholder="e.g. 8 hours"
+                    value={productEditor.data.laborHours}
+                    onChange={e => ppf('laborHours', e.target.value)}
+                    className="w-full border border-indigo-300 rounded-xl p-2.5 outline-none font-bold text-xs bg-white focus:ring-1 focus:ring-indigo-600"
+                  />
+                  <p className="text-[10px] text-indigo-800 mt-1">
+                    Feeds standard crew wage and installation job costing schedules.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="font-extrabold text-[#241621] block mb-1">Description</label>

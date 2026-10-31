@@ -97,7 +97,7 @@ export default function DashboardLayout() {
 
   const navItems = [
     { label: 'Admin Dashboard', path: '/admin/dashboard', icon: LayoutDashboard, roles: ['ADMIN'] },
-    { label: 'Solar Package Configurator', path: '/admin/packages', icon: Sliders, roles: ['ADMIN'] },
+    { label: 'Products & Packages', path: '/admin/packages', icon: Sliders, roles: ['ADMIN', 'SALESMAN', 'TECHNICIAN', 'WAREHOUSE', 'SUPPORT'] },
     { label: 'Lead Board (Kanban)', path: '/sales/leads', icon: Kanban, roles: ['ADMIN', 'SALESMAN'] },
     { label: 'Site Surveys', path: '/operations/surveys', icon: Compass, roles: ['ADMIN', 'SALESMAN', 'TECHNICIAN'] },
     { label: 'Quote Builder', path: '/sales/quotes', icon: FileSpreadsheet, roles: ['SALESMAN'] },

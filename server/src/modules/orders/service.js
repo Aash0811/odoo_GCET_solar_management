@@ -101,13 +101,18 @@ async function createOrderFromQuote(companyId, data, actorId, req = null) {
   const count = await prisma.salesOrder.count({ where: { companyId } });
   const orderNumber = `SO-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
 
+  const creatorId =
+    actorId ||
+    quote.createdById ||
+    (await prisma.user.findFirst({ where: { companyId } }))?.id;
+
   return await prisma.$transaction(async (tx) => {
     const order = await tx.salesOrder.create({
       data: {
         companyId,
         customerId: quote.customerId,
         quoteId: quote.id,
-        createdById: actorId,
+        createdById: creatorId,
         orderNumber,
         status: "PENDING_PAYMENT",
         capacityKw: quote.capacityKw,
@@ -125,10 +130,18 @@ async function createOrderFromQuote(companyId, data, actorId, req = null) {
       data: { status: "ACCEPTED", acceptedAt: new Date() },
     });
 
+    // Update lead stage to WON if leadId exists
+    if (quote.leadId) {
+      await tx.lead.update({
+        where: { id: quote.leadId },
+        data: { stage: "WON" },
+      });
+    }
+
     await recordAuditLog(
       {
         companyId,
-        actorId,
+        actorId: creatorId,
         action: "CREATE",
         entityType: "SalesOrder",
         entityId: order.id,
@@ -151,6 +164,11 @@ async function createOrderFromQuote(companyId, data, actorId, req = null) {
 async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId, req = null) {
   const order = await getOrderById(companyId, orderId);
 
+  const creatorId =
+    actorId ||
+    order.createdById ||
+    (await prisma.user.findFirst({ where: { companyId } }))?.id;
+
   return await prisma.$transaction(async (tx) => {
     // 1. Create Payment record
     const payment = await tx.payment.create({
@@ -170,7 +188,7 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
       await recordAuditLog(
         {
           companyId,
-          actorId,
+          actorId: creatorId,
           action: "PAYMENT_RECORDED",
           entityType: "Payment",
           entityId: payment.id,
@@ -196,21 +214,32 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
     const pickListCount = await tx.pickList.count({ where: { companyId } });
     const pickNumber = `PK-${new Date().getFullYear()}-${String(pickListCount + 1).padStart(4, "0")}`;
 
-    // Extract product lines from quote
-    const productLines = (order.quote.lines || []).filter((l) => l.productId);
+    // Extract and consolidate product lines from quote by productId to prevent duplicate key constraint
+    const productLineMap = new Map();
+    for (const line of (order.quote?.lines || [])) {
+      if (!line.productId) continue;
+      const existing = productLineMap.get(line.productId);
+      if (existing) {
+        existing.requiredQty = Number(existing.requiredQty) + Number(line.quantity);
+      } else {
+        productLineMap.set(line.productId, {
+          productId: line.productId,
+          requiredQty: Number(line.quantity),
+          pickedQty: 0,
+        });
+      }
+    }
+    const pickLinesToCreate = Array.from(productLineMap.values());
+
     const pickList = await tx.pickList.create({
       data: {
         companyId,
         orderId: order.id,
-        createdById: actorId,
+        createdById: creatorId,
         pickNumber,
         status: "OPEN",
         lines: {
-          create: productLines.map((line) => ({
-            productId: line.productId,
-            requiredQty: line.quantity,
-            pickedQty: 0,
-          })),
+          create: pickLinesToCreate,
         },
       },
       include: { lines: true },

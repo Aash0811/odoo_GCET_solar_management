@@ -2,7 +2,7 @@ const inventoryService = require("./service");
 
 async function listProducts(req, res, next) {
   try {
-    const products = await inventoryService.getProducts(req.companyId, req.query);
+    const products = await inventoryService.getProducts(req.companyId, req.query, req.user?.role);
     return res.status(200).json({
       success: true,
       data: products,
@@ -14,7 +14,7 @@ async function listProducts(req, res, next) {
 
 async function getProduct(req, res, next) {
   try {
-    const product = await inventoryService.getProductById(req.companyId, req.params.id);
+    const product = await inventoryService.getProductById(req.companyId, req.params.id, req.user?.role);
     return res.status(200).json({
       success: true,
       data: product,
@@ -26,7 +26,7 @@ async function getProduct(req, res, next) {
 
 async function listPackageTemplates(req, res, next) {
   try {
-    const templates = await inventoryService.getPackageTemplates(req.companyId);
+    const templates = await inventoryService.getPackageTemplates(req.companyId, req.user?.role);
     return res.status(200).json({
       success: true,
       data: templates,
@@ -38,7 +38,7 @@ async function listPackageTemplates(req, res, next) {
 
 async function getPackageTemplate(req, res, next) {
   try {
-    const template = await inventoryService.getPackageTemplateById(req.companyId, req.params.id);
+    const template = await inventoryService.getPackageTemplateById(req.companyId, req.params.id, req.user?.role);
     return res.status(200).json({
       success: true,
       data: template,
