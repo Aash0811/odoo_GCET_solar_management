@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { quotesApi, inventoryApi, leadsApi, ordersApi } from '../../api';
 import { useAuth } from '../../hooks/useAuth';
+import SolarProductCustomizerModal from './SolarProductCustomizerModal';
+import SwapProductModal from './SwapProductModal';
 import {
   FileSpreadsheet,
   Plus,
@@ -33,6 +35,7 @@ import {
   Camera,
   ImageIcon,
   Upload,
+  RefreshCw,
 } from 'lucide-react';
 
 export default function QuoteBuilderPage() {
@@ -50,7 +53,7 @@ export default function QuoteBuilderPage() {
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [activeSurvey, setActiveSurvey] = useState(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
-  const [capacityKw, setCapacityKw] = useState(3);
+  const [capacityKw, setCapacityKw] = useState(0);
   const [subsidyAmount, setSubsidyAmount] = useState(78000);
   const [validDays, setValidDays] = useState(30);
   const [subsidyNote, setSubsidyNote] = useState('Eligible for Central PM Surya Ghar subsidy (up to ₹78,000 for 3kW+) subject to Discom net meter commissioning.');
@@ -66,12 +69,62 @@ export default function QuoteBuilderPage() {
   const [selectedAddProductId, setSelectedAddProductId] = useState('');
   const [addQty, setAddQty] = useState(1);
 
+  // Solar Hardware Customizer Studio state
+  const [showCustomizeModal, setShowCustomizeModal] = useState(false);
+  const [activeCustomizerTab, setActiveCustomizerTab] = useState('PANEL');
+  const [isCustomized, setIsCustomized] = useState(false);
+
+  // Component Swap Modal state
+  const [showSwapModal, setShowSwapModal] = useState(false);
+  const [swapLineIndex, setSwapLineIndex] = useState(null);
+  const prevTemplateIdRef = useRef(selectedTemplateId);
+
   // Roof condition photo upload state
   const [roofPhotos, setRoofPhotos] = useState([]);           // File objects
   const [roofPreviews, setRoofPreviews] = useState([]);        // {url, name} for display
   const [roofPhotoCaption, setRoofPhotoCaption] = useState('');
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const photoInputRef = useRef(null);
+
+  // Active package & dynamic capacity supply limits (Admin controlled)
+  const activeTemplate = templates.find((t) => t.id === selectedTemplateId);
+  const minKw = activeTemplate?.minCapacityKw == null ? null : Number(activeTemplate.minCapacityKw);
+  const maxKw = activeTemplate?.maxCapacityKw == null ? null : Number(activeTemplate.maxCapacityKw);
+  const defaultKw = activeTemplate?.defaultCapacityKw == null ? null : Number(activeTemplate.defaultCapacityKw);
+  const isOutOfCapacityBounds = minKw == null || maxKw == null || capacityKw < minKw || capacityKw > maxKw;
+
+  // Auto-adjust capacityKw when template bounds change if outside range
+  useEffect(() => {
+    if (activeTemplate) {
+      const min = Number(activeTemplate.minCapacityKw);
+      const max = Number(activeTemplate.maxCapacityKw);
+      setCapacityKw((prev) => {
+        if (prev < min) return min;
+        if (prev > max) return max;
+        return prev;
+      });
+    }
+  }, [selectedTemplateId, templates]);
+
+  // Dynamically calculate 4-5 sensible preset buttons based on Admin's min/max kW limits
+  const dynamicPresets = useMemo(() => {
+    if (minKw == null || maxKw == null) return [];
+    if (minKw >= maxKw) return [minKw];
+    const range = maxKw - minKw;
+    if (range <= 5) {
+      const arr = [];
+      for (let k = minKw; k <= maxKw; k += 1) arr.push(k);
+      return arr;
+    }
+    const raw = [
+      minKw,
+      Math.round((minKw + range * 0.25) * 2) / 2,
+      Math.round((minKw + range * 0.5) * 2) / 2,
+      Math.round((minKw + range * 0.75) * 2) / 2,
+      maxKw,
+    ];
+    return Array.from(new Set(raw.map((v) => Math.min(maxKw, Math.max(minKw, v))))).sort((a, b) => a - b);
+  }, [minKw, maxKw]);
 
   const loadData = async () => {
     try {
@@ -120,7 +173,7 @@ export default function QuoteBuilderPage() {
     if (chosen) {
       const survey = chosen.surveys?.[0];
       setActiveSurvey(survey || null);
-      const kw = Number(survey?.recommendedKw || chosen.desiredCapacityKw || 3);
+      const kw = Number(survey?.recommendedKw || chosen.desiredCapacityKw || defaultKw || minKw);
       setCapacityKw(kw);
       setSubsidyAmount(kw >= 3 ? 78000 : kw >= 2 ? 60000 : 30000);
     }
@@ -129,6 +182,39 @@ export default function QuoteBuilderPage() {
   // When template, capacityKw or activeSurvey changes, auto-expand BOM lines (Rule 3 + Module 2 Survey Feed)
   useEffect(() => {
     if (!selectedTemplateId) return;
+
+    if (prevTemplateIdRef.current !== selectedTemplateId) {
+      setIsCustomized(false);
+      prevTemplateIdRef.current = selectedTemplateId;
+    } else if (isCustomized) {
+      // If capacity changed while customized, keep custom products but scale quantities
+      setBomLines((prev) =>
+        prev.map((line) => {
+          const prod = catalogProducts.find((p) => p.id === line.productId);
+          if (
+            prod?.category === 'PANEL' ||
+            line.description?.toLowerCase().includes('panel') ||
+            line.description?.toLowerCase().includes('module')
+          ) {
+            let wattage = 540;
+            if (line.description?.includes('550')) wattage = 550;
+            else if (line.description?.includes('330')) wattage = 330;
+            const newQty = Math.max(1, Math.ceil((capacityKw * 1000) / wattage));
+            return { ...line, quantity: newQty, lineTotal: newQty * Number(line.unitPrice || 0) };
+          }
+          if (
+            prod?.category === 'STRUCTURE' ||
+            line.description?.toLowerCase().includes('structure')
+          ) {
+            const newQty = Math.max(1, capacityKw);
+            return { ...line, quantity: newQty, lineTotal: newQty * Number(line.unitPrice || 0) };
+          }
+          return line;
+        })
+      );
+      return;
+    }
+
     const template = templates.find((t) => t.id === selectedTemplateId);
     if (template && template.bomLines) {
       const expanded = template.bomLines.map((bom, idx) => {
@@ -160,6 +246,132 @@ export default function QuoteBuilderPage() {
       setBomLines(expanded);
     }
   }, [selectedTemplateId, capacityKw, templates, activeSurvey]);
+
+  // Handler: Apply customized products from SolarProductCustomizerModal
+  const handleApplyCustomization = async (newLines, saveAsTemplateName) => {
+    setBomLines(newLines);
+    setIsCustomized(true);
+
+    if (saveAsTemplateName && saveAsTemplateName.trim()) {
+      try {
+        const bomData = newLines
+          .filter((l) => l.productId)
+          .map((l) => ({
+            productId: l.productId,
+            quantityPerKw: Number((Number(l.quantity) / Math.max(1, capacityKw)).toFixed(4)),
+            fixedQuantity: 0,
+          }));
+
+        const createRes = await inventoryApi.createTemplate({
+          name: saveAsTemplateName.trim(),
+          type: 'ON_GRID',
+          defaultCapacityKw: capacityKw,
+          bomLines: bomData,
+        });
+
+        if (createRes.data?.data) {
+          const newTmpl = createRes.data.data;
+          setTemplates((prev) => [newTmpl, ...prev]);
+          setSelectedTemplateId(newTmpl.id);
+          prevTemplateIdRef.current = newTmpl.id;
+        }
+      } catch (tmplErr) {
+        console.error('Failed to save custom package template:', tmplErr);
+      }
+    }
+
+    setSuccessMsg('Solar hardware customized successfully for this customer!');
+  };
+
+  // Handler: Reset BOM lines back to original template defaults
+  const handleResetToTemplate = () => {
+    setIsCustomized(false);
+    const template = templates.find((t) => t.id === selectedTemplateId);
+    if (template && template.bomLines) {
+      const expanded = template.bomLines.map((bom, idx) => {
+        let qty = Math.max(1, Math.ceil(Number(bom.quantityPerKw) * capacityKw + Number(bom.fixedQuantity)));
+        const isCable =
+          bom.product?.category === 'CABLE' ||
+          bom.product?.name?.toLowerCase().includes('cable') ||
+          bom.product?.name?.toLowerCase().includes('wire');
+        if (isCable && activeSurvey?.cableDistanceMeters) {
+          qty = Math.max(15, Math.ceil(Number(activeSurvey.cableDistanceMeters) * 1.2));
+        }
+        const unitPrice = Number(bom.product?.salePrice || 0);
+        return {
+          productId: bom.productId,
+          description: `${bom.product?.name || 'Product'} (${bom.product?.sku || ''})`,
+          quantity: qty,
+          unitPrice,
+          unitCost: Number(bom.product?.costPrice || 0),
+          gstRate: Number(bom.product?.gstRate || 18),
+          lineTotal: qty * unitPrice,
+          sortOrder: idx,
+        };
+      });
+      setBomLines(expanded);
+      setSuccessMsg('Reset quotation back to standard package BOM template.');
+    }
+  };
+
+  // Handler: Open Swap Modal for a specific row in BOM table
+  const handleOpenSwapModal = (idx) => {
+    setSwapLineIndex(idx);
+    setShowSwapModal(true);
+  };
+
+  // Handler: Execute product swap
+  const handleSwapProduct = (newProduct) => {
+    if (swapLineIndex === null || !bomLines[swapLineIndex]) return;
+    const updated = [...bomLines];
+    const current = updated[swapLineIndex];
+    const unitPrice = Number(newProduct.salePrice || 0);
+
+    updated[swapLineIndex] = {
+      ...current,
+      productId: newProduct.id,
+      description: `${newProduct.name} (${newProduct.sku})`,
+      unitPrice,
+      unitCost: Number(newProduct.costPrice || 0),
+      gstRate: Number(newProduct.gstRate || 18),
+      lineTotal: Number(current.quantity) * unitPrice,
+    };
+
+    setBomLines(updated);
+    setIsCustomized(true);
+    setSuccessMsg(`Swapped to ${newProduct.name}!`);
+  };
+
+  // Handler: Load existing quote for salesman customization
+  const handleLoadQuoteForEditing = (q) => {
+    if (q.leadId) {
+      setSelectedLeadId(q.leadId);
+    }
+    if (q.packageTemplateId) {
+      setSelectedTemplateId(q.packageTemplateId);
+      prevTemplateIdRef.current = q.packageTemplateId;
+    }
+    setCapacityKw(Number(q.capacityKw || 3));
+    setSubsidyAmount(Number(q.subsidyAmount || 78000));
+    setDiscountAmount(Number(q.discountAmount || 0));
+    setValidDays(30);
+    if (q.lines && q.lines.length > 0) {
+      const loadedLines = q.lines.map((l, idx) => ({
+        productId: l.productId,
+        description: l.description,
+        quantity: Number(l.quantity),
+        unitPrice: Number(l.unitPrice),
+        unitCost: Number(l.unitCost || 0),
+        gstRate: Number(l.gstRate || 18),
+        lineTotal: Number(l.quantity) * Number(l.unitPrice),
+        sortOrder: idx,
+      }));
+      setBomLines(loadedLines);
+      setIsCustomized(true);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setSuccessMsg(`Loaded Quote ${q.quoteNumber} (v${q.version || 1}) into studio. Ready to customize products!`);
+  };
 
   const handleUpdateLine = (index, field, value) => {
     const updated = [...bomLines];
@@ -229,13 +441,33 @@ export default function QuoteBuilderPage() {
   const estimatedMargin = subtotal - totalBOMCost;
   const estimatedMarginPct = subtotal > 0 ? ((estimatedMargin / subtotal) * 100).toFixed(1) : 0;
 
-  // Approximate panels count (assuming ~540W modules = ~2 panels per kW)
-  const approxPanelCount = Math.ceil(capacityKw * 1.85);
+  // Selected Solar Panel Detection & Accurate Count Calculation
+  const selectedPanelLine = bomLines.find((l) => {
+    const p = catalogProducts.find((cp) => cp.id === l.productId);
+    return (
+      p?.category === 'PANEL' ||
+      p?.sku?.startsWith('PAN-') ||
+      l.description?.toLowerCase().includes('panel') ||
+      l.description?.toLowerCase().includes('module')
+    );
+  });
+  const approxPanelCount = selectedPanelLine
+    ? Number(selectedPanelLine.quantity)
+    : Math.ceil(capacityKw * 1.85);
+
+  const selectedPanelModel = selectedPanelLine
+    ? selectedPanelLine.description
+    : 'Mono-PERC 540W Tier-1 Module';
 
   const handleCreateQuote = async (e) => {
     e.preventDefault();
     if (!selectedLeadId) {
       alert('Please select a survey-approved lead (Rule 2).');
+      return;
+    }
+
+    if (capacityKw < minKw || capacityKw > maxKw) {
+      alert(`Cannot create quote: ${capacityKw} kW is outside the allowable supply capacity range (${minKw} kW – ${maxKw} kW) fixed by Admin.`);
       return;
     }
 
@@ -342,10 +574,12 @@ export default function QuoteBuilderPage() {
           </p>
         </div>
 
-        {/* Quick capacity preset chips */}
+        {/* Quick dynamic capacity preset chips */}
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold text-[#b886ad] uppercase">Presets:</span>
-          {[3, 5, 8, 10].map((kw) => (
+          <span className="text-[11px] font-bold text-[#b886ad] uppercase">
+            Supply Range ({minKw ?? 'Not configured'}–{maxKw ?? 'Not configured'}{minKw != null && maxKw != null ? ' kW' : ''}):
+          </span>
+          {dynamicPresets.map((kw) => (
             <button
               key={kw}
               type="button"
@@ -451,21 +685,33 @@ export default function QuoteBuilderPage() {
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="font-extrabold text-[#241621] block">
-                    2. Solar Package Template
+                  <label className="font-extrabold text-[#241621] flex items-center gap-1.5">
+                    <span>2. Solar Package Template</span>
+                    {isCustomized && (
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                        <Sparkles className="w-2.5 h-2.5 text-[#f09e38]" /> Custom Tailored
+                      </span>
+                    )}
                   </label>
                   <button
                     type="button"
-                    onClick={() => navigate('/admin/packages')}
-                    className="text-[10px] font-bold text-[#f09e38] hover:text-[#d4821a] flex items-center gap-1 cursor-pointer"
+                    onClick={() => {
+                      setActiveCustomizerTab('PANEL');
+                      setShowCustomizeModal(true);
+                    }}
+                    className="text-[11px] font-black text-[#d4821a] hover:text-[#b36c12] flex items-center gap-1 cursor-pointer bg-[#f09e38]/10 hover:bg-[#f09e38]/20 px-2 py-0.5 rounded-md border border-[#f09e38]/30 transition"
+                    title="Tailor solar panels, inverter and hardware specifically for this customer"
                   >
-                    <Sliders className="w-3 h-3" /> Customize in Catalog →
+                    <Wand2 className="w-3 h-3 text-[#f09e38]" /> Customize Products for Customer →
                   </button>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <select
                     value={selectedTemplateId}
-                    onChange={(e) => setSelectedTemplateId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedTemplateId(e.target.value);
+                      setIsCustomized(false);
+                    }}
                     className="flex-1 p-2.5 rounded-xl border border-[#EBDCE7] bg-white font-semibold text-[#241621] focus:ring-2 focus:ring-[#714B67] outline-none shadow-xs"
                   >
                     {templates.map((t) => (
@@ -476,19 +722,59 @@ export default function QuoteBuilderPage() {
                   </select>
                   <button
                     type="button"
-                    onClick={() => navigate('/admin/packages')}
-                    className="px-3 py-2 bg-gradient-to-r from-[#f09e38] to-[#e08920] hover:opacity-95 text-[#241621] rounded-xl text-xs font-black transition flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer"
-                    title="Customize Package Template in Catalog"
+                    onClick={() => {
+                      setActiveCustomizerTab('PANEL');
+                      setShowCustomizeModal(true);
+                    }}
+                    className="px-3.5 py-2.5 bg-gradient-to-r from-[#f09e38] via-[#e08920] to-[#d4821a] hover:opacity-95 text-[#241621] rounded-xl text-xs font-black transition flex items-center justify-center gap-2 shrink-0 shadow-md shadow-[#f09e38]/25 cursor-pointer ring-1 ring-[#f09e38]"
+                    title="Customize Solar Panels, Inverter, Battery & Hardware for this Customer"
                   >
-                    <Wand2 className="w-3.5 h-3.5" /> Customize
+                    <Sliders className="w-4 h-4 text-[#241621]" />
+                    <span>Customize Products for Customer</span>
                   </button>
                 </div>
+
+                {isCustomized && (
+                  <div className="mt-2 p-2.5 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-950 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-[#f09e38] shrink-0" />
+                      <div>
+                        <span className="font-extrabold text-[#714B67]">Customized for Customer: </span>
+                        <span className="text-[11px] text-slate-700">
+                          {bomLines.length} tailored components active in proposal.
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveCustomizerTab('ALL_ITEMS');
+                          setShowCustomizeModal(true);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-[#714B67] text-white text-[10px] font-bold hover:bg-[#855278] cursor-pointer"
+                      >
+                        Edit Custom
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetToTemplate}
+                        className="px-2 py-0.5 rounded-md bg-white border border-amber-300 text-amber-900 text-[10px] font-bold hover:bg-amber-100 cursor-pointer"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="font-extrabold text-[#241621]">
-                    3. System Capacity: <span className="text-[#714B67] font-black">{capacityKw} kW</span>
+                  <label className="font-extrabold text-[#241621] flex items-center gap-1.5">
+                    <span>3. System Capacity:</span>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-[#714B67]/10 text-[#714B67] border border-[#714B67]/20">
+                      Supply Limit: {minKw} – {maxKw} kW
+                    </span>
                   </label>
                   <span className="text-[10px] font-bold text-[#f09e38] flex items-center gap-1">
                     <Sun className="w-3 h-3 text-[#f09e38]" /> ~{approxPanelCount} PV Modules
@@ -497,15 +783,36 @@ export default function QuoteBuilderPage() {
                 <div className="flex items-center gap-3">
                   <input
                     type="range"
-                    min="1"
-                    max="10"
-                    step="0.5"
-                    value={capacityKw}
+                    min={minKw}
+                    max={maxKw}
+                    step={maxKw - minKw > 20 ? 1 : 0.5}
+                    value={Math.min(maxKw, Math.max(minKw, capacityKw))}
                     onChange={(e) => setCapacityKw(Number(e.target.value))}
                     className="w-full h-2 bg-[#EBDCE7] rounded-lg appearance-none cursor-pointer accent-[#714B67]"
                   />
-                  <span className="font-black text-sm text-[#714B67] min-w-[3rem] text-right">{capacityKw} kW</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <input
+                      type="number"
+                      min={minKw}
+                      max={maxKw}
+                      step="0.5"
+                      value={capacityKw}
+                      onChange={(e) => setCapacityKw(Number(e.target.value))}
+                      className={`w-16 px-2 py-1 rounded-lg border text-center font-black text-xs ${
+                        isOutOfCapacityBounds
+                          ? 'border-rose-500 bg-rose-50 text-rose-700'
+                          : 'border-[#EBDCE7] bg-white text-[#714B67]'
+                      }`}
+                    />
+                    <span className="font-black text-xs text-[#714B67]">kW</span>
+                  </div>
                 </div>
+                {isOutOfCapacityBounds && (
+                  <p className="text-[10px] text-rose-600 font-bold mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 text-rose-500 shrink-0" />
+                    Value must be between {minKw} kW and {maxKw} kW (fixed by Admin).
+                  </p>
+                )}
               </div>
             </div>
 
@@ -515,9 +822,22 @@ export default function QuoteBuilderPage() {
                 <span className="font-extrabold flex items-center gap-1.5 text-[#dabed3]">
                   <Layers className="w-4 h-4 text-[#f09e38]" /> Real-Time Solar Array Simulation
                 </span>
-                <span className="text-[11px] text-[#f09e38] font-bold">
-                  {capacityKw} kW Peak • ~{Math.round(capacityKw * 4.3)} kWh/Day Yield
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveCustomizerTab('PANEL');
+                      setShowCustomizeModal(true);
+                    }}
+                    className="text-[10px] px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[#f09e38] font-black border border-[#f09e38]/40 transition flex items-center gap-1 cursor-pointer"
+                    title="Customize Solar Panel Module Type (Mono PERC, Bifacial TOPCon, Poly)"
+                  >
+                    <Sun className="w-3 h-3 text-[#f09e38]" /> Customize Solar Panels
+                  </button>
+                  <span className="text-[11px] text-[#f09e38] font-bold">
+                    {capacityKw} kW Peak • ~{Math.round(capacityKw * 4.3)} kWh/Day Yield
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 py-1">
@@ -525,15 +845,22 @@ export default function QuoteBuilderPage() {
                   <div
                     key={i}
                     className="solar-cell h-10 rounded-md flex flex-col items-center justify-center border border-sky-400/50 shadow-xs group"
-                    title={`Panel #${i + 1}: 540W Mono-PERC Tier 1 Module`}
+                    title={`Panel #${i + 1}: ${selectedPanelModel}`}
                   >
                     <div className="w-full h-0.5 bg-sky-300/30 my-auto"></div>
-                    <span className="text-[8px] font-mono font-bold text-sky-200">540W</span>
+                    <span className="text-[8px] font-mono font-bold text-sky-200 truncate px-1">
+                      {selectedPanelModel.includes('550')
+                        ? '550W'
+                        : selectedPanelModel.includes('330')
+                        ? '330W'
+                        : '540W'}
+                    </span>
                   </div>
                 ))}
               </div>
-              <p className="text-[10px] text-[#dabed3]/80 flex items-center gap-1">
-                <span>Calculated for Tier-1 Half-Cut Mono-PERC modules with 25-Year Performance Warranty.</span>
+              <p className="text-[10px] text-[#dabed3]/80 flex items-center justify-between">
+                <span>Calculated for {selectedPanelModel} with 25-Year Performance Warranty.</span>
+                <span className="font-mono text-[#f09e38] font-bold">{approxPanelCount} Modules Configured</span>
               </p>
             </div>
 
@@ -541,9 +868,20 @@ export default function QuoteBuilderPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-extrabold text-[#241621] flex items-center gap-1.5">
-                  <Calculator className="w-3.5 h-3.5 text-[#714B67]" /> Bill of Materials (BOM) Auto-Expansion
+                  <Calculator className="w-3.5 h-3.5 text-[#714B67]" /> Bill of Materials (BOM) Sizing & Customization
                 </span>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveCustomizerTab('ALL_ITEMS');
+                      setShowCustomizeModal(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-[#714B67] to-[#8a5d7e] hover:opacity-95 text-white rounded-lg text-xs font-black shadow-xs transition cursor-pointer"
+                    title="Customize all products for customer"
+                  >
+                    <Sliders className="w-3.5 h-3.5 text-[#f09e38]" /> Customize Products for Customer
+                  </button>
                   <button
                     type="button"
                     onClick={() => setShowAddProductModal(true)}
@@ -590,7 +928,15 @@ export default function QuoteBuilderPage() {
                     <div className="col-span-2 text-right font-black text-[#714B67] pr-1">
                       ₹{line.lineTotal.toLocaleString()}
                     </div>
-                    <div className="col-span-1 text-center">
+                    <div className="col-span-1 text-center flex items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSwapModal(idx)}
+                        className="p-1 rounded text-[#714B67] hover:text-[#f09e38] hover:bg-purple-50 transition cursor-pointer"
+                        title="Swap with another product from catalogue"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 mx-auto" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleRemoveLine(idx)}
@@ -795,9 +1141,18 @@ export default function QuoteBuilderPage() {
               </p>
             </div>
 
+            {isOutOfCapacityBounds && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>
+                  Cannot submit quote: Selected capacity ({capacityKw} kW) is outside the Admin supply range ({minKw} kW – {maxKw} kW) configured for {activeTemplate?.name || 'this package'}.
+                </span>
+              </div>
+            )}
+
             <button
               type="submit"
-              disabled={submitting || approvedLeads.length === 0}
+              disabled={submitting || approvedLeads.length === 0 || isOutOfCapacityBounds}
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#714b67] via-[#855278] to-[#714b67] hover:opacity-95 text-white font-black text-xs shadow-lg shadow-[#714b67]/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
             >              <FileCheck2 className="w-4 h-4 text-[#f09e38]" />
               {submitting ? 'Generating Proposal...' : 'Save & Issue Official Quotation (PDF & Share Link)'}
@@ -950,6 +1305,13 @@ export default function QuoteBuilderPage() {
                         )}
                       </button>
                     )}
+                    <button
+                      onClick={() => handleLoadQuoteForEditing(q)}
+                      className="flex items-center gap-1 text-[#714B67] hover:text-[#f09e38] font-bold text-[11px] transition cursor-pointer"
+                      title="Load quote products to customize"
+                    >
+                      <Sliders className="w-3 h-3 text-[#f09e38]" /> Customize
+                    </button>
                   </div>
 
                   {q.status !== 'CONVERTED' ? (
@@ -1067,6 +1429,35 @@ export default function QuoteBuilderPage() {
           </div>
         </div>
       )}
+
+      {/* Modal: Solar Hardware Customizer Studio for Customer */}
+      <SolarProductCustomizerModal
+        isOpen={showCustomizeModal}
+        onClose={() => setShowCustomizeModal(false)}
+        catalogProducts={catalogProducts}
+        capacityKw={capacityKw}
+        setCapacityKw={setCapacityKw}
+        minCapacityKw={minKw}
+        maxCapacityKw={maxKw}
+        dynamicPresets={dynamicPresets}
+        currentBomLines={bomLines}
+        activeSurvey={activeSurvey}
+        selectedLead={approvedLeads.find((l) => l.id === selectedLeadId)}
+        onApplyCustomization={handleApplyCustomization}
+        activeTabDefault={activeCustomizerTab}
+      />
+
+      {/* Modal: Swap Single Product in BOM */}
+      <SwapProductModal
+        isOpen={showSwapModal}
+        onClose={() => {
+          setShowSwapModal(false);
+          setSwapLineIndex(null);
+        }}
+        currentLine={swapLineIndex !== null ? bomLines[swapLineIndex] : null}
+        catalogProducts={catalogProducts}
+        onSwap={handleSwapProduct}
+      />
     </div>
   );
 }

@@ -7,7 +7,7 @@ const createOrderSchema = z.object({
 
 const recordPaymentSchema = z.object({
   amount: z.coerce.number().positive("Payment amount must be greater than 0"),
-  method: z.enum(["CASH", "UPI", "BANK_TRANSFER", "CARD", "CHEQUE", "OTHER"]),
+  method: z.enum(["CASH", "UPI", "BANK_TRANSFER", "CARD", "CHEQUE", "OTHER", "DUMMY"]),
   transactionRef: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   scheduledInstallDate: z.string().or(z.date()).optional().nullable(),

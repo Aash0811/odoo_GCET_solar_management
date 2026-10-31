@@ -60,6 +60,7 @@ app.get("/api/v1", (req, res) => {
 
 // Mount modules
 app.use("/api/v1/auth", require("./modules/auth/routes"));
+app.use("/api/v1/users", require("./modules/users/routes"));
 app.use("/api/v1/leads", require("./modules/leads/routes"));
 app.use("/api/v1/surveys", require("./modules/surveys/routes"));
 app.use("/api/v1/inventory", require("./modules/inventory/routes"));

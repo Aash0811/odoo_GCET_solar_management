@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import SignatureCanvas from 'react-signature-canvas';
 import { customerPortalApi, quotesApi, jobsApi, leadsApi, ordersApi } from '../../api';
 import {
@@ -34,9 +35,14 @@ import {
   Zap,
   Calculator,
   X,
+  CreditCard,
+  Camera,
+  Upload,
+  Image,
 } from 'lucide-react';
 
 export default function CustomerPortalPage() {
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -45,6 +51,9 @@ export default function CustomerPortalPage() {
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [quoteSubmitting, setQuoteSubmitting] = useState(false);
   const [quoteSuccess, setQuoteSuccess] = useState('');
+  const [quoteRoofPhotos, setQuoteRoofPhotos] = useState([]);
+  const [quoteRoofPreviews, setQuoteRoofPreviews] = useState([]);
+  const [uploadingDirectQuoteId, setUploadingDirectQuoteId] = useState(null);
   const [quoteForm, setQuoteForm] = useState({
     desiredCapacityKw: 3,
     monthlyBillAmount: 4500,
@@ -138,13 +147,39 @@ export default function CustomerPortalPage() {
     }
   };
 
+  const handleSelectQuoteRoofPhotos = (e) => {
+    const files = Array.from(e.target.files || []);
+    setQuoteRoofPhotos((prev) => [...prev, ...files]);
+    const previews = files.map((f) => URL.createObjectURL(f));
+    setQuoteRoofPreviews((prev) => [...prev, ...previews]);
+  };
+
+  const handleUploadDirectQuotePhoto = async (quoteId, e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    try {
+      setUploadingDirectQuoteId(quoteId);
+      const fd = new FormData();
+      files.forEach((f) => fd.append('photos', f));
+      fd.append('caption', 'Customer rooftop photo update');
+      fd.append('phase', 'ROOF_CONDITION');
+      await quotesApi.uploadPhotos(quoteId, fd);
+      alert('Rooftop photos uploaded successfully!');
+      loadPortalData();
+    } catch (err) {
+      alert('Photo upload failed: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setUploadingDirectQuoteId(null);
+    }
+  };
+
   const handleQuoteSubmit = async (e) => {
     e.preventDefault();
     setQuoteSubmitting(true);
     try {
       const profile = data?.profile || {};
       const fullNotes = `Roof Type: ${quoteForm.roofType}. Approx monthly bill: ₹${quoteForm.monthlyBillAmount}. ${quoteForm.notes}`;
-      await leadsApi.submitPublicInquiry({
+      const res = await leadsApi.submitPublicInquiry({
         contactName: profile.name || 'Customer',
         phone: profile.phone || '9876543210',
         email: profile.email || undefined,
@@ -155,10 +190,26 @@ export default function CustomerPortalPage() {
         notes: fullNotes,
       });
 
-      setQuoteSuccess('Your solar quote request has been received! Our engineering team will review your roof and generate your proposal.');
+      // If quotes exist or lead returned a quote
+      const quotesList = data?.quotes || [];
+      if (quoteRoofPhotos.length > 0 && quotesList.length > 0) {
+        try {
+          const fd = new FormData();
+          quoteRoofPhotos.forEach((f) => fd.append('photos', f));
+          fd.append('caption', `Homeowner roof request - ${quoteForm.roofType}`);
+          fd.append('phase', 'ROOF_CONDITION');
+          await quotesApi.uploadPhotos(quotesList[0].id, fd);
+        } catch (photoErr) {
+          console.warn('Could not auto-link photos to previous quote:', photoErr);
+        }
+      }
+
+      setQuoteSuccess('Your solar quote request and rooftop details have been received! Our engineering team will review your roof and generate your proposal.');
       setTimeout(() => {
         setQuoteSuccess('');
         setShowQuoteModal(false);
+        setQuoteRoofPhotos([]);
+        setQuoteRoofPreviews([]);
         loadPortalData();
       }, 2500);
     } catch (err) {
@@ -331,9 +382,17 @@ export default function CustomerPortalPage() {
                     Rooftop System Capacity: <strong className="text-[#714B67] font-black">{activeOrder.capacityKw} kW Tier-1 Grid-Tied</strong>
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="text-[11px] text-[#b886ad] font-bold">Total Contract Value</p>
-                  <p className="text-lg font-black text-[#241621]">₹{Number(activeOrder.totalAmount).toLocaleString()}</p>
+                <div className="text-right flex flex-col items-end gap-1.5">
+                  <div>
+                    <p className="text-[11px] text-[#b886ad] font-bold">Total Contract Value</p>
+                    <p className="text-lg font-black text-[#241621]">₹{Number(activeOrder.totalAmount).toLocaleString()}</p>
+                  </div>
+                  <button
+                    onClick={() => navigate('/customer/orders')}
+                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-[#f09e38] hover:opacity-95 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-md shadow-[#f09e38]/20 transition cursor-pointer"
+                  >
+                    <CreditCard className="w-3.5 h-3.5 text-slate-950" /> ⚡ Pay Online (Dummy Gateway)
+                  </button>
                 </div>
               </div>
 
@@ -513,6 +572,31 @@ export default function CustomerPortalPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Verified Installation Photos taken by Technician */}
+                  {activeJob.photos && activeJob.photos.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-[#EBDCE7]/80">
+                      <p className="text-[11px] font-black uppercase text-[#714B67] tracking-wider mb-2 flex items-center gap-1.5">
+                        <Camera className="w-3.5 h-3.5 text-emerald-600" /> Technician Verified Installation Photos ({activeJob.photos.length})
+                      </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        {activeJob.photos.map((p) => (
+                          <a
+                            key={p.id}
+                            href={p.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group relative rounded-xl overflow-hidden border border-[#EBDCE7] aspect-video bg-slate-100 block shadow-xs"
+                          >
+                            <img src={p.url} alt={p.caption || 'Installed equipment photo'} className="w-full h-full object-cover group-hover:scale-105 transition" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent flex items-end p-2 text-white text-[10px] font-bold">
+                              <span className="truncate">{p.caption || 'Installed System'}</span>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -696,34 +780,83 @@ export default function CustomerPortalPage() {
               quotes.map((q) => (
                 <div
                   key={q.id}
-                  className="p-5 rounded-2xl odoo-glass-card flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  className="p-5 rounded-2xl odoo-glass-card space-y-3"
                 >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-black text-[#714B67] text-sm font-mono">{q.quoteNumber}</h3>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-[#F5EDF3] text-[#714B67] border border-[#EBDCE7]">
-                        {q.status}
-                      </span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-black text-[#714B67] text-sm font-mono">{q.quoteNumber}</h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-[#F5EDF3] text-[#714B67] border border-[#EBDCE7]">
+                          {q.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-1 font-semibold">
+                        System: {q.packageTemplate?.name || `${q.capacityKw} kW Custom Package`}
+                      </p>
+                      <p className="text-xs text-slate-500 font-medium">
+                        Gross: ₹{Number(q.totalAmount).toLocaleString()} • Central Subsidy: ₹
+                        {Number(q.subsidyEstimate || 78000).toLocaleString()}
+                      </p>
                     </div>
-                    <p className="text-xs text-slate-600 mt-1 font-semibold">
-                      System: {q.packageTemplate?.name || `${q.capacityKw} kW Custom Package`}
-                    </p>
-                    <p className="text-xs text-slate-500 font-medium">
-                      Gross: ₹{Number(q.totalAmount).toLocaleString()} • Central Subsidy: ₹
-                      {Number(q.subsidyEstimate || 78000).toLocaleString()}
-                    </p>
+
+                    <div className="flex items-center flex-wrap gap-2">
+                      <label
+                        htmlFor={`quote-direct-photo-${q.id}`}
+                        className={`inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-[#EBDCE7] hover:bg-[#FAF6F9] text-[#714B67] text-xs font-black rounded-xl shadow-xs transition cursor-pointer ${
+                          uploadingDirectQuoteId === q.id ? 'opacity-50 pointer-events-none' : ''
+                        }`}
+                      >
+                        <Camera className="w-3.5 h-3.5 text-[#f09e38]" />
+                        {uploadingDirectQuoteId === q.id ? 'Uploading Photos...' : 'Upload Roof Photo'}
+                        <input
+                          id={`quote-direct-photo-${q.id}`}
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleUploadDirectQuotePhoto(q.id, e)}
+                        />
+                      </label>
+
+                      <a
+                        href={quotesApi.downloadPdfUrl(q.id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#714B67] to-[#855278] hover:opacity-95 text-white text-xs font-black rounded-xl shadow-md transition"
+                      >
+                        <Download className="w-3.5 h-3.5 text-[#f09e38]" /> Official Quotation PDF
+                      </a>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={quotesApi.downloadPdfUrl(q.id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#714B67] to-[#855278] hover:opacity-95 text-white text-xs font-black rounded-xl shadow-md transition"
-                    >
-                      <Download className="w-3.5 h-3.5 text-[#f09e38]" /> Official Quotation PDF
-                    </a>
-                  </div>
+                  {/* Attached Rooftop & Site Photos */}
+                  {q.photos && q.photos.length > 0 && (
+                    <div className="pt-3 border-t border-[#EBDCE7]">
+                      <p className="text-[11px] font-black uppercase text-[#714B67] tracking-wider mb-2 flex items-center gap-1.5">
+                        <Image className="w-3.5 h-3.5 text-[#f09e38]" /> Attached Rooftop & Site Photos ({q.photos.length})
+                      </p>
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                        {q.photos.map((p) => (
+                          <a
+                            key={p.id}
+                            href={p.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group relative rounded-xl overflow-hidden border border-[#EBDCE7] aspect-square bg-slate-100 block shadow-xs"
+                          >
+                            <img
+                              src={p.url}
+                              alt={p.caption || 'Rooftop Photo'}
+                              className="w-full h-full object-cover group-hover:scale-105 transition"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-[10px] font-bold p-1 text-center">
+                              View
+                            </div>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -938,6 +1071,54 @@ export default function CustomerPortalPage() {
                     </div>
                   );
                 })()}
+
+                <div>
+                  <label className="font-extrabold text-[#241621] block mb-1">Upload Rooftop / Site Photos (Optional)</label>
+                  <p className="text-[10px] text-slate-500 mb-1.5">
+                    Attaching clear photos of your roof or terrace speeds up shadow analysis & engineering approval.
+                  </p>
+                  <div className="border border-dashed border-[#EBDCE7] bg-[#FAF6F9] hover:border-[#714B67] rounded-xl p-3 text-center transition">
+                    <label
+                      htmlFor="modalQuoteRoofPhotos"
+                      className="cursor-pointer flex flex-col items-center justify-center gap-1"
+                    >
+                      <Camera className="w-5 h-5 text-[#f09e38]" />
+                      <span className="text-xs font-bold text-[#714B67] hover:underline">
+                        Click to select roof photos
+                      </span>
+                      <span className="text-[10px] text-slate-400">JPG, PNG, WebP</span>
+                      <input
+                        id="modalQuoteRoofPhotos"
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleSelectQuoteRoofPhotos}
+                      />
+                    </label>
+
+                    {quoteRoofPreviews.length > 0 && (
+                      <div className="mt-2.5 grid grid-cols-4 gap-2">
+                        {quoteRoofPreviews.map((p, idx) => (
+                          <div key={idx} className="relative group rounded-lg overflow-hidden border border-[#EBDCE7] aspect-square">
+                            <img src={p} alt="Roof Preview" className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setQuoteRoofPhotos((prev) => prev.filter((_, i) => i !== idx));
+                                setQuoteRoofPreviews((prev) => prev.filter((_, i) => i !== idx));
+                              }}
+                              className="absolute top-1 right-1 bg-black/70 hover:bg-rose-600 text-white rounded-full p-0.5 text-xs"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
                 <div>
                   <label className="font-extrabold text-[#241621] block mb-1">Special Requirements / Notes</label>

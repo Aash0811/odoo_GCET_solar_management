@@ -46,6 +46,8 @@ export const inventoryApi = {
   getTemplate: (id) => apiClient.get(`/inventory/templates/${id}`),
   createTemplate: (data) => apiClient.post('/inventory/templates', data),
   updateTemplate: (id, data) => apiClient.patch(`/inventory/templates/${id}`, data),
+  getCapacitySettings: () => apiClient.get('/inventory/capacity-settings'),
+  updateCapacitySettings: (data) => apiClient.patch('/inventory/capacity-settings', data),
 };
 
 export const quotesApi = {
@@ -95,16 +97,27 @@ export const dispatchApi = {
   pickItem: (id, data) => apiClient.post(`/dispatch/pick-lists/${id}/pick-item`, data),
   scanSerial: (data) => apiClient.post('/dispatch/scan-serial', data),
   validateDelivery: (orderId, data) => apiClient.post(`/dispatch/orders/${orderId}/validate-delivery`, data),
+  lookupBarcode: (code) => apiClient.get('/dispatch/lookup-barcode', { params: { code } }),
+  getItemBarcodes: (params) => apiClient.get('/dispatch/item-barcodes', { params }),
+  seedUniqueCodes: (data) => apiClient.post('/dispatch/seed-unique-codes', data),
+  registerSerial: (data) => apiClient.post('/dispatch/register-serial', data),
 };
 
 export const warehousesApi = {
   list: (params) => apiClient.get('/warehouses', { params }),
   get: (id) => apiClient.get(`/warehouses/${id}`),
   create: (data) => apiClient.post('/warehouses', data),
+  createMultiZone: (data) => apiClient.post('/warehouses/batch', data),
   update: (id, data) => apiClient.patch(`/warehouses/${id}`, data),
+  delete: (id) => apiClient.delete(`/warehouses/${id}`),
+  getManagers: () => apiClient.get('/warehouses/managers'),
   getStock: (id, params) => apiClient.get(`/warehouses/${id}/stock`, { params }),
   addOrAdjustStock: (id, data) => apiClient.post(`/warehouses/${id}/stock`, data),
   checkPickStock: (id, pickListId) => apiClient.get(`/warehouses/${id}/check-pick/${pickListId}`),
+  requestTransfer: (data) => apiClient.post('/warehouses/transfers', data),
+  listTransfers: (params) => apiClient.get('/warehouses/transfers', { params }),
+  approveTransfer: (id) => apiClient.post(`/warehouses/transfers/${id}/approve`),
+  rejectTransfer: (id, data) => apiClient.post(`/warehouses/transfers/${id}/reject`, data),
 };
 
 export const jobsApi = {
@@ -115,7 +128,10 @@ export const jobsApi = {
     apiClient.post(`/jobs/${id}/photos`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  complete: (id, data) => apiClient.post(`/jobs/${id}/complete`, data),
+  complete: (id, data) =>
+    apiClient.post(`/jobs/${id}/complete`, data, {
+      headers: data instanceof FormData ? { 'Content-Type': 'multipart/form-data' } : {},
+    }),
   downloadCertificateUrl: (id) => {
     const token = localStorage.getItem('sunpower_token');
     return `${apiClient.defaults.baseURL}/jobs/${id}/certificate${token ? `?token=${encodeURIComponent(token)}` : ''}`;
@@ -171,4 +187,13 @@ export const customerPortalApi = {
 export const companyApi = {
   get: () => apiClient.get('/company'),
   update: (data) => apiClient.patch('/company', data),
+};
+
+export const usersApi = {
+  list: (params) => apiClient.get('/users', { params }),
+  get: (id) => apiClient.get(`/users/${id}`),
+  create: (data) => apiClient.post('/users', data),
+  update: (id, data) => apiClient.patch(`/users/${id}`, data),
+  changeRole: (id, role) => apiClient.patch(`/users/${id}/role`, { role }),
+  delete: (id) => apiClient.delete(`/users/${id}`),
 };

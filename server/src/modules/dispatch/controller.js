@@ -113,6 +113,58 @@ async function assignWarehouse(req, res, next) {
   }
 }
 
+async function lookupBarcode(req, res, next) {
+  try {
+    const result = await dispatchService.lookupBarcode(req.companyId, req.query.code);
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getItemBarcodes(req, res, next) {
+  try {
+    const items = await dispatchService.getItemBarcodes(req.companyId, req.query.search);
+    return res.status(200).json({
+      success: true,
+      data: items,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function seedUniqueCodes(req, res, next) {
+  try {
+    const result = await dispatchService.seedUniqueItemCodes(req.companyId, req.body);
+    return res.status(200).json({
+      success: true,
+      message: `Successfully generated ${result.createdCount} unique serial barcode codes.`,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function registerSerial(req, res, next) {
+  try {
+    const result = await dispatchService.registerCustomSerial(req.companyId, req.body);
+    return res.status(201).json({
+      success: true,
+      message: result.isNew
+        ? `Serial '${result.serial}' registered successfully in warehouse inventory!`
+        : `Serial '${result.serial}' is already registered in warehouse inventory.`,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   listPickLists,
   getPickList,
@@ -120,4 +172,8 @@ module.exports = {
   pickItem,
   assignWarehouse,
   validateDelivery,
+  lookupBarcode,
+  getItemBarcodes,
+  seedUniqueCodes,
+  registerSerial,
 };

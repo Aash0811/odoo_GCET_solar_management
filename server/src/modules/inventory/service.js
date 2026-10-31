@@ -28,6 +28,28 @@ function sanitizePackageTemplate(template, userRole) {
   return template;
 }
 
+function validateCapacityBounds(minCapacityKw, maxCapacityKw, defaultCapacityKw) {
+  const min = Number(minCapacityKw);
+  const max = Number(maxCapacityKw);
+  const defaultKw = Number(defaultCapacityKw);
+
+  if (![min, max, defaultKw].every(Number.isFinite) || min <= 0 || max <= 0) {
+    const error = new Error("Capacity limits must be positive numbers.");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (min > max) {
+    const error = new Error("Minimum capacity cannot exceed maximum capacity.");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (defaultKw < min || defaultKw > max) {
+    const error = new Error("Default capacity must be within the configured minimum and maximum.");
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
 async function getProducts(companyId, filters = {}, userRole = "ADMIN") {
   const { category, productType, isSerialTracked, lowStock, search, q, page, limit } = filters;
   const where = { companyId, isActive: true };
@@ -245,12 +267,13 @@ async function createProduct(companyId, data, actorId = null, req = null) {
 }
 
 async function createPackageTemplate(companyId, data, actorId = null, req = null) {
-  const { name, description, type, minCapacityKw = 1, maxCapacityKw = 10, defaultCapacityKw = 3, basePrice, bomLines = [] } = data;
+  const { name, description, type, minCapacityKw, maxCapacityKw, defaultCapacityKw, basePrice, bomLines = [] } = data;
   if (!name || !type) {
     const error = new Error("Package name and package type are required.");
     error.statusCode = 400;
     throw error;
   }
+  validateCapacityBounds(minCapacityKw, maxCapacityKw, defaultCapacityKw);
 
   const template = await prisma.$transaction(async (tx) => {
     const pkg = await tx.packageTemplate.create({
@@ -322,6 +345,11 @@ async function updatePackageTemplate(companyId, id, data, actorId = null, req = 
   }
 
   const { name, description, type, minCapacityKw, maxCapacityKw, defaultCapacityKw, basePrice, isActive, bomLines } = data;
+  validateCapacityBounds(
+    minCapacityKw ?? existing.minCapacityKw,
+    maxCapacityKw ?? existing.maxCapacityKw,
+    defaultCapacityKw ?? existing.defaultCapacityKw
+  );
 
   const updateFields = {};
   if (name !== undefined) updateFields.name = name.trim();
@@ -386,6 +414,155 @@ async function updatePackageTemplate(companyId, id, data, actorId = null, req = 
   return updated;
 }
 
+/**
+ * Dynamic System Capacity: Get aggregated and per-package min/max kW supply limits
+ */
+async function getCapacitySettings(companyId) {
+  const templates = await prisma.packageTemplate.findMany({
+    where: { companyId, isActive: true },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      minCapacityKw: true,
+      maxCapacityKw: true,
+      defaultCapacityKw: true,
+      basePrice: true,
+      updatedAt: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const types = ["ON_GRID", "OFF_GRID", "PANEL_SET", "INSTALLATION"];
+  const byType = {};
+
+  for (const t of types) {
+    const matching = templates.filter((pkg) => pkg.type === t);
+    if (matching.length > 0) {
+      const minKw = Math.min(...matching.map((p) => Number(p.minCapacityKw)));
+      const maxKw = Math.max(...matching.map((p) => Number(p.maxCapacityKw)));
+      const defaultKw = Number(matching[0].defaultCapacityKw);
+      byType[t] = {
+        type: t,
+        minKw,
+        maxKw,
+        defaultKw,
+        packageCount: matching.length,
+        packages: matching,
+      };
+    } else {
+      byType[t] = {
+        type: t,
+        minKw: null,
+        maxKw: null,
+        defaultKw: null,
+        packageCount: 0,
+        packages: [],
+      };
+    }
+  }
+
+  const overallMin = templates.length > 0 ? Math.min(...templates.map((p) => Number(p.minCapacityKw))) : null;
+  const overallMax = templates.length > 0 ? Math.max(...templates.map((p) => Number(p.maxCapacityKw))) : null;
+
+  return {
+    overallMinKw: overallMin,
+    overallMaxKw: overallMax,
+    byType,
+    packages: templates,
+  };
+}
+
+/**
+ * Dynamic System Capacity: Admin update of min/max kW supply limits by type and per package
+ */
+async function updateCapacitySettings(companyId, data, actorId = null, req = null) {
+  const { typeLimits, packageLimits } = data;
+  const updatedResults = [];
+
+  // 1. Update by package type (e.g. all ON_GRID or all OFF_GRID packages)
+  if (Array.isArray(typeLimits)) {
+    for (const tl of typeLimits) {
+      if (tl.type) {
+        const updateData = {};
+        if (tl.minCapacityKw !== undefined) updateData.minCapacityKw = Number(tl.minCapacityKw);
+        if (tl.maxCapacityKw !== undefined) updateData.maxCapacityKw = Number(tl.maxCapacityKw);
+        if (tl.defaultCapacityKw !== undefined) updateData.defaultCapacityKw = Number(tl.defaultCapacityKw);
+
+        if (Object.keys(updateData).length > 0) {
+          const current = await prisma.packageTemplate.findFirst({
+            where: { companyId, type: tl.type, isActive: true },
+            select: { minCapacityKw: true, maxCapacityKw: true, defaultCapacityKw: true },
+          });
+          if (!current) {
+            const error = new Error(`No active package exists for type '${tl.type}'.`);
+            error.statusCode = 400;
+            throw error;
+          }
+          validateCapacityBounds(
+            updateData.minCapacityKw ?? current.minCapacityKw,
+            updateData.maxCapacityKw ?? current.maxCapacityKw,
+            updateData.defaultCapacityKw ?? current.defaultCapacityKw
+          );
+          const res = await prisma.packageTemplate.updateMany({
+            where: { companyId, type: tl.type, isActive: true },
+            data: updateData,
+          });
+          updatedResults.push({ type: tl.type, count: res.count, updateData });
+        }
+      }
+    }
+  }
+
+  // 2. Update specific packages
+  if (Array.isArray(packageLimits)) {
+    for (const pl of packageLimits) {
+      if (pl.id) {
+        const updateData = {};
+        if (pl.minCapacityKw !== undefined) updateData.minCapacityKw = Number(pl.minCapacityKw);
+        if (pl.maxCapacityKw !== undefined) updateData.maxCapacityKw = Number(pl.maxCapacityKw);
+        if (pl.defaultCapacityKw !== undefined) updateData.defaultCapacityKw = Number(pl.defaultCapacityKw);
+
+        if (Object.keys(updateData).length > 0) {
+          const current = await prisma.packageTemplate.findFirst({
+            where: { id: pl.id, companyId },
+            select: { minCapacityKw: true, maxCapacityKw: true, defaultCapacityKw: true },
+          });
+          if (!current) {
+            const error = new Error("Package template not found.");
+            error.statusCode = 404;
+            throw error;
+          }
+          validateCapacityBounds(
+            updateData.minCapacityKw ?? current.minCapacityKw,
+            updateData.maxCapacityKw ?? current.maxCapacityKw,
+            updateData.defaultCapacityKw ?? current.defaultCapacityKw
+          );
+          const pkg = await prisma.packageTemplate.update({
+            where: { id: pl.id },
+            data: updateData,
+          });
+          updatedResults.push({ packageId: pl.id, name: pkg.name, updateData });
+        }
+      }
+    }
+  }
+
+  if (actorId) {
+    await recordAuditLog({
+      companyId,
+      actorId,
+      action: "UPDATE",
+      entityType: "SystemCapacityLimits",
+      entityId: companyId,
+      metadata: { typeLimits, packageLimits, updatedResults },
+      req,
+    });
+  }
+
+  return await getCapacitySettings(companyId);
+}
+
 module.exports = {
   getProducts,
   getProductById,
@@ -395,4 +572,6 @@ module.exports = {
   getPackageTemplateById,
   createPackageTemplate,
   updatePackageTemplate,
+  getCapacitySettings,
+  updateCapacitySettings,
 };

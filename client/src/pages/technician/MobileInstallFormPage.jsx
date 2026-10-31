@@ -37,6 +37,7 @@ export default function MobileInstallFormPage() {
   const [notes, setNotes] = useState('');
   const [photos, setPhotos] = useState([]);
   const [photoPreviews, setPhotoPreviews] = useState([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [signedByName, setSignedByName] = useState('');
 
   const loadJob = async () => {
@@ -70,6 +71,25 @@ export default function MobileInstallFormPage() {
     setPhotos([...photos, ...files]);
     const previews = files.map((f) => URL.createObjectURL(f));
     setPhotoPreviews([...photoPreviews, ...previews]);
+  };
+
+  const handleUploadSelectedPhotos = async () => {
+    if (photos.length === 0) return;
+    setUploadingPhotos(true);
+    try {
+      const fd = new FormData();
+      photos.forEach((p) => fd.append('photos', p));
+      fd.append('caption', 'Installed Equipment & Solar Panels');
+      await jobsApi.uploadPhoto(id, fd);
+      alert(`${photos.length} photo(s) uploaded successfully to installation job!`);
+      setPhotos([]);
+      setPhotoPreviews([]);
+      loadJob();
+    } catch (err) {
+      alert('Photo upload failed: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setUploadingPhotos(false);
+    }
   };
 
   const handleClearSignature = () => {
@@ -309,10 +329,33 @@ export default function MobileInstallFormPage() {
             )}
 
             {photoPreviews.length > 0 && (
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-semibold text-slate-600 block">
-                  New Photos to Submit ({photoPreviews.length}):
-                </span>
+              <div className="space-y-2 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-emerald-900 block">
+                    New Photos Selected ({photoPreviews.length}):
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhotos([]);
+                        setPhotoPreviews([]);
+                      }}
+                      className="text-[10.5px] text-slate-500 hover:text-rose-600 font-bold cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      type="button"
+                      disabled={uploadingPhotos}
+                      onClick={handleUploadSelectedPhotos}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[10.5px] font-black flex items-center gap-1 shadow-xs cursor-pointer disabled:opacity-50"
+                    >
+                      <Upload className="w-3 h-3 text-amber-300" />
+                      {uploadingPhotos ? 'Uploading...' : '⚡ Upload Photos Now'}
+                    </button>
+                  </div>
+                </div>
                 <div className="flex gap-2 overflow-x-auto pt-1">
                   {photoPreviews.map((src, i) => (
                     <img key={i} src={src} alt="Preview" className="w-16 h-16 rounded-lg object-cover border border-emerald-300 ring-1 ring-emerald-400 shrink-0" />

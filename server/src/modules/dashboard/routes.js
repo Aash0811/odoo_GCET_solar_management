@@ -15,8 +15,8 @@ router.get("/shared", dashboardController.getSharedDashboard);
 router.use(authenticate);
 router.use(companyScope);
 
-router.get("/stats", requireRole("ADMIN", "SALESMAN"), dashboardController.getStats);
-router.get("/export-csv", requireRole("ADMIN"), dashboardController.exportCsv);
-router.post("/share-link", requireRole("ADMIN"), validate(createShareLinkSchema), dashboardController.createShareLink);
+router.get("/stats", requireRole("ADMIN", "ACCOUNTANT", "SALESMAN"), dashboardController.getStats);
+router.get("/export-csv", requireRole("ADMIN", "ACCOUNTANT"), dashboardController.exportCsv);
+router.post("/share-link", requireRole("ADMIN", "ACCOUNTANT"), validate(createShareLinkSchema), dashboardController.createShareLink);
 
 module.exports = router;

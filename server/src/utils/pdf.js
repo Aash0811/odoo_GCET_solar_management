@@ -339,7 +339,7 @@ function generatePaymentReceiptPdf(payment, order, company) {
         .fillColor("#334155")
         .text(`Receipt #: ${payment.receiptNumber || `REC-${payment.id.slice(-6).toUpperCase()}`}`, 50, topY)
         .text(`Date & Time: ${new Date(payment.receivedAt).toLocaleString("en-IN")}`, 50, topY + 15)
-        .text(`Payment Mode: ${payment.method}`, 50, topY + 30)
+        .text(`Payment Mode: ${payment.method === "DUMMY" ? "DUMMY (Simulated Instant Test)" : payment.method}`, 50, topY + 30)
         .text(`Reference / UTR: ${payment.transactionRef || "N/A"}`, 50, topY + 45);
 
       doc

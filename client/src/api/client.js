@@ -9,12 +9,16 @@ const apiClient = axios.create({
   },
 });
 
-// Request interceptor to attach JWT token
+// Request interceptor to attach JWT token and handle multipart FormData
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('sunpower_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    // If request payload is FormData, remove Content-Type so browser/axios sets multipart boundary properly
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
     }
     return config;
   },

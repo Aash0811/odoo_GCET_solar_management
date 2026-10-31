@@ -26,4 +26,8 @@ router.get("/templates/:id", inventoryController.getPackageTemplate);
 router.post("/templates", requireRole("ADMIN", "SALESMAN"), inventoryController.createPackageTemplate);
 router.patch("/templates/:id", requireRole("ADMIN", "SALESMAN"), inventoryController.updatePackageTemplate);
 
+// Dynamic System Capacity Settings (Admin Supply Controls)
+router.get("/capacity-settings", inventoryController.getCapacitySettings);
+router.patch("/capacity-settings", requireRole("ADMIN"), inventoryController.updateCapacitySettings);
+
 module.exports = router;

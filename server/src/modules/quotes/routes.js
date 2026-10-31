@@ -44,7 +44,7 @@ router.patch("/:id/status", requireRole("ADMIN", "SALESMAN"), validate(updateQuo
 // Upload up to 10 roof/site condition photos for a quote
 router.post(
   "/:id/photos",
-  requireRole("ADMIN", "SALESMAN", "TECHNICIAN"),
+  requireRole("ADMIN", "SALESMAN", "TECHNICIAN", "CUSTOMER"),
   upload.array("photos", 10),
   quotesController.uploadQuotePhoto
 );

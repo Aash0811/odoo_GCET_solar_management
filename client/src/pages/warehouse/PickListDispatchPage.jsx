@@ -1,86 +1,77 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dispatchApi, warehousesApi, inventoryApi } from '../../api';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { useAuth } from '../../hooks/useAuth';
+import { Html5Qrcode } from 'html5-qrcode';
 import {
-  Boxes,
-  QrCode,
-  CheckCircle2,
-  AlertCircle,
   Truck,
   Scan,
-  ShieldCheck,
-  X,
-  Keyboard,
   Barcode,
-  Sparkles,
-  Zap,
-  PackageCheck,
-  Layers,
+  QrCode,
+  ShieldCheck,
+  CheckCircle2,
+  AlertCircle,
   Building2,
+  Boxes,
+  FileText,
+  Printer,
+  Clock,
+  Zap,
+  Check,
   MapPin,
-  Plus,
-  RefreshCw,
+  User,
+  DollarSign,
+  Layers,
+  Calendar,
+  Sparkles,
   ArrowRight,
   ShieldAlert,
   Search,
-  Check,
-  Phone,
-  User,
-  SlidersHorizontal,
+  Plus,
+  RefreshCw,
+  X,
+  PackageCheck,
+  CheckCircle,
+  Upload,
+  Camera,
 } from 'lucide-react';
 
 export default function PickListDispatchPage({ defaultTab = 'dispatch' }) {
-  const [activeTab, setActiveTab] = useState(defaultTab); // 'dispatch' | 'warehouses' | 'stock'
+  const { user, role } = useAuth();
+  const isAdmin = role === 'ADMIN';
 
-  // Pick lists states
+  // Navigation tabs: 'dispatch' (PDF Scene: Dispatch Day & Serial Numbers) | 'warehouses' (Multi-Zone)
+  const [activeTab, setActiveTab] = useState(defaultTab);
+
+  // Pick lists / Dispatch Orders
   const [pickLists, setPickLists] = useState([]);
   const [selectedPickList, setSelectedPickList] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [searchFilter, setSearchFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'READY' | 'DISPATCHED'
 
-  // Warehouses states
+  // Warehouses
   const [warehouses, setWarehouses] = useState([]);
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
-  const [selectedWarehouseDetail, setSelectedWarehouseDetail] = useState(null);
-  const [warehouseStockList, setWarehouseStockList] = useState([]);
-  const [warehouseSearch, setWarehouseSearch] = useState('');
-  const [stockSearch, setStockSearch] = useState('');
-  const [loadingStock, setLoadingStock] = useState(false);
 
-  // Scanning states
-  const [scannedSerial, setScannedSerial] = useState('');
-  const [selectedProductId, setSelectedProductId] = useState('');
-  const [scannerActive, setScannerActive] = useState(false);
-  const [scanMessage, setScanMessage] = useState({ type: '', text: '' });
-  const [validationError, setValidationError] = useState(null);
+  // Scanning States
+  const [scannedSerialInput, setScannedSerialInput] = useState('');
+  const [activeScanProductId, setActiveScanProductId] = useState('');
+  const [cameraScannerActive, setCameraScannerActive] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const [isDecodingFile, setIsDecodingFile] = useState(false);
+  const [scanFeedback, setScanFeedback] = useState({ type: '', text: '' });
+  const [dispatchError, setDispatchError] = useState(null);
+  const [dispatchSuccessData, setDispatchSuccessData] = useState(null);
+  const [showGatePassModal, setShowGatePassModal] = useState(false);
   const scannerRef = useRef(null);
+  const dispatchFileInputRef = useRef(null);
 
-  // Modal states: Create Warehouse
-  const [showCreateWarehouseModal, setShowCreateWarehouseModal] = useState(false);
-  const [newWhName, setNewWhName] = useState('');
-  const [newWhCode, setNewWhCode] = useState('');
-  const [newWhCity, setNewWhCity] = useState('');
-  const [newWhZone, setNewWhZone] = useState('');
-  const [newWhAddress, setNewWhAddress] = useState('');
-  const [newWhContact, setNewWhContact] = useState('');
-  const [newWhPhone, setNewWhPhone] = useState('');
-  const [createWhSubmitting, setCreateWhSubmitting] = useState(false);
-  const [createWhError, setCreateWhError] = useState('');
-
-  // Modal states: Add / Adjust Stock
-  const [showStockModal, setShowStockModal] = useState(false);
-  const [stockTargetProduct, setStockTargetProduct] = useState(null);
-  const [stockQtyInput, setStockQtyInput] = useState(10);
-  const [stockOperation, setStockOperation] = useState('ADD'); // 'ADD' | 'SET'
-  const [stockNotes, setStockNotes] = useState('');
-  const [stockSubmitting, setStockSubmitting] = useState(false);
-
-  // Load Pick Lists & Warehouses
-  const loadInitialData = async () => {
+  // Load Initial Pick Lists & Warehouses
+  const loadData = async () => {
     try {
       setLoading(true);
       const [plRes, whRes] = await Promise.all([
         dispatchApi.listPickLists(),
-        warehousesApi.list(),
+        warehousesApi.list().catch(() => ({ data: { data: [] } })),
       ]);
       const plData = plRes.data?.data || [];
       const whData = whRes.data?.data || [];
@@ -88,35 +79,13 @@ export default function PickListDispatchPage({ defaultTab = 'dispatch' }) {
       setPickLists(plData);
       setWarehouses(whData);
 
-      if (whData.length > 0 && !selectedWarehouseId) {
-        setSelectedWarehouseId(whData[0].id);
-      }
-
       if (plData.length > 0) {
         loadDetail(plData[0].id);
       }
     } catch (err) {
-      console.error('Failed to load initial dispatch data:', err);
+      console.error('Failed to load dispatch data:', err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadPickLists = async () => {
-    try {
-      const res = await dispatchApi.listPickLists();
-      setPickLists(res.data?.data || []);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const loadWarehouses = async () => {
-    try {
-      const res = await warehousesApi.list();
-      setWarehouses(res.data?.data || []);
-    } catch (err) {
-      console.error(err);
     }
   };
 
@@ -125,94 +94,134 @@ export default function PickListDispatchPage({ defaultTab = 'dispatch' }) {
       const res = await dispatchApi.getPickList(id);
       const pl = res.data?.data;
       setSelectedPickList(pl);
-      setValidationError(null);
-      setScanMessage({ type: '', text: '' });
+      setDispatchError(null);
+      setScanFeedback({ type: '', text: '' });
 
-      // Auto-select first serial tracked item
-      const trackedLine = (pl?.lines || []).find((l) => l.product?.isSerialTracked);
-      if (trackedLine) setSelectedProductId(trackedLine.productId);
+      // Auto-select first tracked line needing a serial number
+      const trackedLine = (pl?.lines || []).find(
+        (l) => l.product?.isSerialTracked && Number(l.pickedQty || 0) < Number(l.requiredQty || 1)
+      ) || (pl?.lines || []).find((l) => l.product?.isSerialTracked);
+
+      if (trackedLine) {
+        setActiveScanProductId(trackedLine.productId);
+      }
     } catch (err) {
       console.error('Failed to load pick list detail:', err);
     }
   };
 
-  const loadWarehouseStock = async (whId) => {
-    if (!whId) return;
-    try {
-      setLoadingStock(true);
-      const [detailRes, stockRes] = await Promise.all([
-        warehousesApi.get(whId),
-        warehousesApi.getStock(whId, { search: stockSearch }),
-      ]);
-      setSelectedWarehouseDetail(detailRes.data?.data);
-      setWarehouseStockList(stockRes.data?.data || []);
-    } catch (err) {
-      console.error('Failed to load warehouse stock:', err);
-    } finally {
-      setLoadingStock(false);
-    }
-  };
-
   useEffect(() => {
-    loadInitialData();
+    loadData();
   }, []);
 
-  useEffect(() => {
-    if (selectedWarehouseId) {
-      loadWarehouseStock(selectedWarehouseId);
-    }
-  }, [selectedWarehouseId, stockSearch]);
-
-  // HTML5 Barcode/QR Camera Scanner Setup
-  useEffect(() => {
-    if (scannerActive) {
-      const scanner = new Html5QrcodeScanner('reader', {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-      });
-      scanner.render(
-        (decodedText) => {
-          setScannedSerial(decodedText);
-          handleScanSubmit(decodedText);
-          scanner.clear();
-          setScannerActive(false);
-        },
-        () => {
-          // ignore stream scanning frames
-        }
-      );
-      scannerRef.current = scanner;
-    }
-
-    return () => {
+  // Safe Camera Scanner Setup with Diagnostic Error Fallback
+  const handleToggleCamera = async () => {
+    if (cameraScannerActive) {
       if (scannerRef.current) {
-        scannerRef.current.clear().catch(() => {});
+        try {
+          await scannerRef.current.stop();
+        } catch (e) {}
+        scannerRef.current = null;
       }
-    };
-  }, [scannerActive, selectedProductId, selectedPickList]);
-
-  // Check if currently selected product has stock in the assigned warehouse
-  const currentSelectedLine = (selectedPickList?.lines || []).find(
-    (l) => l.productId === selectedProductId
-  );
-  const currentLineStockQty = currentSelectedLine?.warehouseStockQty ?? 0;
-  const isSelectedLineOutOfStock = currentSelectedLine ? currentLineStockQty <= 0 : false;
-
-  const handleScanSubmit = async (serialToScan = scannedSerial) => {
-    if (!serialToScan || !selectedProductId) {
-      alert('Please enter or scan a serial number and select a product.');
+      setCameraScannerActive(false);
+      setCameraError('');
       return;
     }
 
-    // Client-side guard for immediate feedback
-    if (isSelectedLineOutOfStock) {
-      const whName = selectedPickList?.warehouse?.name || 'Assigned Warehouse';
-      const whCityZone = selectedPickList?.warehouse
-        ? `${selectedPickList.warehouse.city} - ${selectedPickList.warehouse.zone}`
-        : '';
-      setScanMessage({
+    setCameraError('');
+    setCameraScannerActive(true);
+
+    setTimeout(async () => {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('Camera API requires HTTPS or localhost.');
+        }
+
+        const html5QrCode = new Html5Qrcode('reader-dispatch-box');
+        scannerRef.current = html5QrCode;
+
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+        await html5QrCode.start(
+          { facingMode: 'environment' },
+          config,
+          (decodedText) => {
+            handleScanSubmit(decodedText);
+            html5QrCode.stop().then(() => {
+              setCameraScannerActive(false);
+              scannerRef.current = null;
+            }).catch(() => {});
+          },
+          () => {}
+        );
+      } catch (err) {
+        console.warn('Dispatch camera error:', err);
+        let errorMsg = 'Could not access camera. ';
+        if (err.name === 'NotAllowedError' || err.message?.includes('Permission denied')) {
+          errorMsg = 'Camera permission denied. Please allow camera in your browser URL bar.';
+        } else if (err.name === 'NotFoundError' || err.message?.includes('Requested device not found')) {
+          errorMsg = 'No camera found on this computer. Use "Upload Barcode Photo" or a USB scanner gun.';
+        } else {
+          errorMsg += err.message || 'Use image upload or USB scanner below.';
+        }
+        setCameraError(errorMsg);
+        setCameraScannerActive(false);
+      }
+    }, 150);
+  };
+
+  // Upload Photo to Scan Barcode
+  const handleFileUploadScan = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsDecodingFile(true);
+    try {
+      const html5QrCode = new Html5Qrcode('reader-dispatch-hidden-canvas');
+      const decodedText = await html5QrCode.scanFile(file, true);
+      html5QrCode.clear();
+
+      setScannedSerialInput(decodedText);
+      await handleScanSubmit(decodedText);
+    } catch (err) {
+      setScanFeedback({
         type: 'error',
-        text: `⛔ CANNOT PICK: Product '${currentSelectedLine?.product?.name}' is NOT PRESENT in warehouse '${whName}' (${whCityZone}). Available: 0 units.`,
+        text: `Could not decode barcode from image: ${err.message || 'Please ensure the barcode is clear and in focus.'}`,
+      });
+    } finally {
+      setIsDecodingFile(false);
+      if (dispatchFileInputRef.current) dispatchFileInputRef.current.value = '';
+    }
+  };
+
+  // Serial Scanning Submit
+  const handleScanSubmit = async (serial = scannedSerialInput) => {
+    const cleanSerial = serial.trim();
+    if (!cleanSerial) {
+      setScanFeedback({ type: 'error', text: 'Please enter or scan a serial number.' });
+      return;
+    }
+
+    if (!selectedPickList) return;
+
+    // Determine target product ID
+    let targetProductId = activeScanProductId;
+    if (!targetProductId) {
+      const trackedLine = (selectedPickList.lines || []).find((l) => l.product?.isSerialTracked);
+      if (trackedLine) targetProductId = trackedLine.productId;
+    }
+
+    if (!targetProductId) {
+      setScanFeedback({ type: 'error', text: 'Please select which equipment you are scanning.' });
+      return;
+    }
+
+    // Check if product is out of stock in assigned warehouse
+    const currentLine = (selectedPickList.lines || []).find((l) => l.productId === targetProductId);
+    if ((currentLine?.warehouseStockQty ?? 0) <= 0) {
+      setScanFeedback({
+        type: 'error',
+        text: `⛔ CANNOT PICK: Stock for '${currentLine?.product?.name}' is NOT present in ${selectedPickList.warehouse?.name || 'warehouse'}. Available: 0 units.`,
       });
       return;
     }
@@ -220,46 +229,44 @@ export default function PickListDispatchPage({ defaultTab = 'dispatch' }) {
     try {
       const res = await dispatchApi.scanSerial({
         orderId: selectedPickList.orderId,
-        productId: selectedProductId,
-        serial: serialToScan.trim(),
+        productId: targetProductId,
+        serial: cleanSerial,
       });
 
-      setScanMessage({
+      setScanFeedback({
         type: 'success',
-        text: `✓ Serial ${res.data?.data?.serial} scanned and verified from ${selectedPickList?.warehouse?.name || 'warehouse'}!`,
+        text: `✓ Verified: Serial ${res.data?.data?.serial} recorded for ${currentLine?.product?.name || 'unit'}.`,
       });
-      setScannedSerial('');
+      setScannedSerialInput('');
       loadDetail(selectedPickList.id);
-      loadPickLists();
+      dispatchApi.listPickLists().then((r) => setPickLists(r.data?.data || []));
     } catch (err) {
-      setScanMessage({
+      setScanFeedback({
         type: 'error',
         text: err.response?.data?.message || 'Failed to scan serial number.',
       });
     }
   };
 
-  // Quick 1-click test barcode generator for demo speed
-  const handleQuickDemoScan = () => {
-    if (!selectedProductId) return;
-    if (isSelectedLineOutOfStock) {
-      alert(
-        `Cannot pick: Product is out of stock in warehouse '${selectedPickList?.warehouse?.name}' (${selectedPickList?.warehouse?.city} - ${selectedPickList?.warehouse?.zone}). Available stock: 0.`
-      );
-      return;
+  // Quick 1-Click Simulation Buttons (Simulates barcode gun trigger)
+  const handleQuickDemoScan = (productSku = 'INV-3KW') => {
+    const matchingLine = (selectedPickList?.lines || []).find((l) =>
+      l.product?.sku?.toLowerCase().includes(productSku.toLowerCase())
+    ) || (selectedPickList?.lines || []).find((l) => l.product?.isSerialTracked);
+
+    if (matchingLine) {
+      setActiveScanProductId(matchingLine.productId);
+      const generatedSerial = `${matchingLine.product?.sku || 'GEN'}-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      setScannedSerialInput(generatedSerial);
+      handleScanSubmit(generatedSerial);
     }
-    const trackedLine = (selectedPickList?.lines || []).find((l) => l.productId === selectedProductId);
-    const sku = trackedLine?.product?.sku || 'GEN';
-    const randomSerial = `${sku}-DEMO-${Math.floor(1000 + Math.random() * 9000)}`;
-    setScannedSerial(randomSerial);
-    handleScanSubmit(randomSerial);
   };
 
-  // Pick Non-Serial Item
+  // Pick Non-Serialized Materials (cables, mounting stands, earthing)
   const handlePickNonSerialItem = async (line) => {
-    if (line.warehouseStockQty <= 0) {
+    if ((line.warehouseStockQty ?? 0) <= 0) {
       alert(
-        `Cannot pick: Stock is not present in warehouse '${selectedPickList?.warehouse?.name}' (${selectedPickList?.warehouse?.city} - ${selectedPickList?.warehouse?.zone}). Available: 0 units.`
+        `Cannot pick: Stock is not present in warehouse '${selectedPickList.warehouse?.name}'. Available: 0 units.`
       );
       return;
     }
@@ -270,1037 +277,814 @@ export default function PickListDispatchPage({ defaultTab = 'dispatch' }) {
         quantity: 1,
       });
       loadDetail(selectedPickList.id);
-      loadPickLists();
+      dispatchApi.listPickLists().then((r) => setPickLists(r.data?.data || []));
     } catch (err) {
       alert('Picking failed: ' + (err.response?.data?.message || err.message));
     }
   };
 
-  // Change Warehouse on PickList
-  const handleChangePickListWarehouse = async (warehouseId) => {
+  // Change Assigned Warehouse
+  const handleChangeWarehouse = async (warehouseId) => {
     try {
       const res = await dispatchApi.assignWarehouse(selectedPickList.id, warehouseId);
-      alert(res.data?.message || 'Warehouse updated for pick list.');
+      alert(res.data?.message || 'Warehouse updated.');
       loadDetail(selectedPickList.id);
-      loadPickLists();
+      dispatchApi.listPickLists().then((r) => setPickLists(r.data?.data || []));
     } catch (err) {
       alert('Failed to change warehouse: ' + (err.response?.data?.message || err.message));
     }
   };
 
-  const handleValidateDelivery = async () => {
-    setValidationError(null);
+  // ============================================================
+  // CORE PDF REQUIREMENT: DISPATCH TRUCK & AUTO-START WARRANTIES
+  // ============================================================
+  const handleDispatchTruckAndStartWarranties = async () => {
+    if (!selectedPickList) return;
+    setDispatchError(null);
+
+    const confirmed = window.confirm(
+      `Confirm Dispatch for Order ${selectedPickList.order?.orderNumber}?\n\n` +
+      `• The truck will depart with the ₹1,50,000 hardware kit.\n` +
+      `• The 2-year inverter/battery and 20-year solar panel warranty clocks will start automatically today.\n` +
+      `• Stock will be deducted from warehouse inventory.\n\n` +
+      `Proceed with Dispatch?`
+    );
+    if (!confirmed) return;
+
     try {
       const res = await dispatchApi.validateDelivery(selectedPickList.orderId, {
         deliveredTo: selectedPickList.order?.customer?.name,
-        notes: `Warehouse materials validated & dispatched to site from ${selectedPickList.warehouse?.name || 'warehouse'}.`,
+        notes: `Truck dispatched from ${selectedPickList.warehouse?.name || 'warehouse'}. Hardware loaded and all serial numbers verified.`,
       });
 
-      alert(
-        `Delivery validated successfully! ${res.data?.data?.warrantiesCreatedCount} active warranties generated. Stock deducted from warehouse.`
-      );
+      const data = res.data?.data;
+      setDispatchSuccessData({
+        deliveryNumber: data?.delivery?.deliveryNumber || 'DEL-2026-0001',
+        warrantiesCreatedCount: data?.warrantiesCreatedCount || 2,
+        customerName: selectedPickList.order?.customer?.name,
+        serialCount: (selectedPickList.order?.serialNumbers || []).length,
+      });
+
+      setShowGatePassModal(true);
       loadDetail(selectedPickList.id);
-      loadPickLists();
-      loadWarehouses();
-      if (selectedWarehouseId) loadWarehouseStock(selectedWarehouseId);
+      dispatchApi.listPickLists().then((r) => setPickLists(r.data?.data || []));
     } catch (err) {
       if (err.response?.data?.missing) {
-        setValidationError(err.response.data);
+        setDispatchError(err.response.data);
       } else {
-        alert('Validation failed: ' + (err.response?.data?.message || err.message));
+        alert('Dispatch failed: ' + (err.response?.data?.message || err.message));
       }
     }
   };
 
-  // Create Warehouse Submit
-  const handleCreateWarehouse = async (e) => {
-    e.preventDefault();
-    setCreateWhSubmitting(true);
-    setCreateWhError('');
-    try {
-      const res = await warehousesApi.create({
-        name: newWhName,
-        code: newWhCode,
-        city: newWhCity,
-        zone: newWhZone,
-        address: newWhAddress,
-        contactPerson: newWhContact,
-        phone: newWhPhone,
-      });
+  // Calculations for current selected pick list
+  const lines = selectedPickList?.lines || [];
+  const trackedLines = lines.filter((l) => l.product?.isSerialTracked);
+  const totalSerialsRequired = trackedLines.reduce((acc, l) => acc + Number(l.requiredQty || 1), 0);
+  const scannedSerials = selectedPickList?.order?.serialNumbers || [];
+  const totalSerialsScanned = scannedSerials.length;
+  const isAllSerialsScanned = totalSerialsRequired > 0 && totalSerialsScanned >= totalSerialsRequired;
 
-      alert(res.data?.message || 'Warehouse created successfully!');
-      setShowCreateWarehouseModal(false);
-      // Reset form
-      setNewWhName('');
-      setNewWhCode('');
-      setNewWhCity('');
-      setNewWhZone('');
-      setNewWhAddress('');
-      setNewWhContact('');
-      setNewWhPhone('');
+  // Filter pick lists
+  const filteredPickLists = pickLists.filter((p) => {
+    const matchesStatus =
+      statusFilter === 'ALL' ||
+      (statusFilter === 'READY' && p.status !== 'COMPLETED') ||
+      (statusFilter === 'DISPATCHED' && p.status === 'COMPLETED');
 
-      loadWarehouses();
-      if (res.data?.data?.id) {
-        setSelectedWarehouseId(res.data.data.id);
-      }
-    } catch (err) {
-      setCreateWhError(err.response?.data?.message || err.message);
-    } finally {
-      setCreateWhSubmitting(false);
-    }
-  };
+    const matchesSearch =
+      !searchFilter ||
+      p.pickNumber.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      p.order?.orderNumber?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      p.order?.customer?.name?.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      p.warehouse?.city?.toLowerCase().includes(searchFilter.toLowerCase());
 
-  // Add / Adjust Stock Submit
-  const handleStockUpdateSubmit = async (e) => {
-    e.preventDefault();
-    if (!stockTargetProduct || !selectedWarehouseId) return;
-
-    setStockSubmitting(true);
-    try {
-      const res = await warehousesApi.addOrAdjustStock(selectedWarehouseId, {
-        productId: stockTargetProduct.productId,
-        quantity: Number(stockQtyInput),
-        operation: stockOperation,
-        notes: stockNotes || undefined,
-      });
-
-      alert(res.data?.message || 'Stock updated successfully!');
-      setShowStockModal(false);
-      setStockNotes('');
-      loadWarehouseStock(selectedWarehouseId);
-      loadWarehouses();
-      if (selectedPickList) loadDetail(selectedPickList.id);
-    } catch (err) {
-      alert('Failed to update stock: ' + (err.response?.data?.message || err.message));
-    } finally {
-      setStockSubmitting(false);
-    }
-  };
+    return matchesStatus && matchesSearch;
+  });
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh]">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <div className="w-10 h-10 border-4 border-[#714B67] border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
-  // Calculate overall serial scan fulfillment progress
-  const totalSerialRequired = (selectedPickList?.lines || []).reduce(
-    (sum, l) => (l.product?.isSerialTracked ? sum + Number(l.requiredQty) : sum),
-    0
-  );
-  const totalSerialScanned = (selectedPickList?.order?.serialNumbers || []).length;
-  const scanProgressPercent =
-    totalSerialRequired > 0
-      ? Math.min(100, Math.round((totalSerialScanned / totalSerialRequired) * 100))
-      : 100;
-
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-[#EBDCE7]">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#f09e38] animate-pulse"></span>
-            <h1 className="text-2xl font-black text-[#241621] tracking-tight">
-              Warehouse &amp; Multi-Zone Stock Management
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* SCENE HEADER (Directly reflecting PDF Page 3) */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-[#241621] via-[#331c2f] to-[#714B67] text-white shadow-lg space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#f09e38] animate-ping"></span>
+              <span className="text-[11px] font-black uppercase tracking-wider text-[#f09e38]">
+                SunPower Solutions • Dispatch Day &amp; Serial Number Verification
+              </span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white mt-1">
+              The Truck is About to Leave with ₹1,50,000 of Hardware
             </h1>
+            <p className="text-xs sm:text-sm text-purple-200 mt-1 max-w-3xl leading-relaxed">
+              Every inverter, battery, and charge controller has its own serial number and must be scanned before departure.
+              The moment dispatch is confirmed, the <strong>20-year panel and 2-year inverter warranty clocks start automatically</strong> without typing dates into a register.
+            </p>
           </div>
-          <p className="text-xs text-[#714B67] font-medium mt-0.5">
-            Unique City &amp; Zone identification • Real-time warehouse inventory • Strict stock availability check on picking
-          </p>
-        </div>
 
-        {/* Tab Controls */}
-        <div className="flex items-center bg-[#F5EDF3] p-1 rounded-xl border border-[#EBDCE7] self-start md:self-auto">
-          <button
-            type="button"
-            onClick={() => setActiveTab('dispatch')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'dispatch'
-                ? 'bg-[#714B67] text-white shadow-xs'
-                : 'text-[#714B67] hover:bg-white/60'
-            }`}
-          >
-            <Boxes className="w-3.5 h-3.5" /> Material Picking &amp; Scanner
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('warehouses')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'warehouses'
-                ? 'bg-[#714B67] text-white shadow-xs'
-                : 'text-[#714B67] hover:bg-white/60'
-            }`}
-          >
-            <Building2 className="w-3.5 h-3.5" /> Multi-Zone Warehouses ({warehouses.length})
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setActiveTab('dispatch')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'dispatch'
+                  ? 'bg-[#f09e38] text-[#241621] shadow-md'
+                  : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+            >
+              <Truck className="w-4 h-4" /> Dispatch Terminal
+            </button>
+            <a
+              href="/warehouse/inventory"
+              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition flex items-center gap-1.5"
+            >
+              <Building2 className="w-4 h-4 text-purple-200" /> Multi-Zone Warehouses
+            </a>
+            <a
+              href="/warehouse/scanner"
+              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition flex items-center gap-1.5"
+            >
+              <Barcode className="w-4 h-4 text-purple-200" /> Barcode Suite
+            </a>
+          </div>
         </div>
       </div>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* TAB 1: MATERIAL PICKING & SERIAL SCAN TERMINAL */}
+      {/* MAIN TWO-COLUMN DISPATCH TERMINAL */}
       {/* ───────────────────────────────────────────────────────────── */}
-      {activeTab === 'dispatch' && (
-        <div className="grid lg:grid-cols-12 gap-6">
-          {/* Left 4 cols: Pick List Queue */}
-          <div className="lg:col-span-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-black text-[#241621] flex items-center gap-2">
-                <Boxes className="w-4 h-4 text-[#714B67]" /> Active Pick Lists ({pickLists.length})
-              </h2>
-              <span className="text-[11px] font-bold text-[#b886ad]">Rule 4 Generated</span>
-            </div>
-
-            <div className="space-y-2.5 overflow-y-auto max-h-[78vh] pr-1">
-              {pickLists.map((p) => {
-                const isSelected = selectedPickList?.id === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => loadDetail(p.id)}
-                    className={`w-full p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-gradient-to-r from-[#F5EDF3] to-white border-[#714B67] shadow-md ring-2 ring-[#714B67]/20'
-                        : 'bg-white border-[#EBDCE7] hover:border-[#b886ad]'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="font-black text-xs text-[#714B67] font-mono">{p.pickNumber}</span>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                          p.status === 'COMPLETED'
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                            : 'bg-amber-100 text-amber-800 border border-amber-200'
-                        }`}
-                      >
-                        {p.status}
-                      </span>
-                    </div>
-                    <p className="text-xs font-extrabold text-[#241621] truncate">{p.order?.customer?.name}</p>
-
-                    {/* Assigned Warehouse Badge */}
-                    <div className="mt-1.5 flex items-center gap-1 text-[10px] text-[#714B67] font-semibold">
-                      <Building2 className="w-3 h-3 text-[#f09e38] shrink-0" />
-                      <span className="truncate">
-                        {p.warehouse ? `${p.warehouse.city} (${p.warehouse.zone})` : 'Unassigned'}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between mt-1 text-[11px] text-slate-500">
-                      <span>Order: {p.order?.orderNumber}</span>
-                      <span className="font-bold text-[#714B67]">{p.order?.capacityKw} kW</span>
-                    </div>
-                  </button>
-                );
-              })}
+      <div className="grid lg:grid-cols-12 gap-6">
+        {/* Left 4 cols: Trucks Ready to Leave (Pick Lists Queue) */}
+        <div className="lg:col-span-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black text-[#241621] flex items-center gap-2">
+              <Truck className="w-4 h-4 text-[#714B67]" /> Trucks Ready for Dispatch ({filteredPickLists.length})
+            </h2>
+            <div className="flex items-center gap-1 text-[10px] font-bold">
+              <button
+                type="button"
+                onClick={() => setStatusFilter('ALL')}
+                className={`px-2 py-0.5 rounded-lg cursor-pointer ${
+                  statusFilter === 'ALL' ? 'bg-[#714B67] text-white' : 'text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('READY')}
+                className={`px-2 py-0.5 rounded-lg cursor-pointer ${
+                  statusFilter === 'READY' ? 'bg-[#714B67] text-white' : 'text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                Pending Scan
+              </button>
             </div>
           </div>
 
-          {/* Right 8 cols: Active Pick List Detail & Serial Scan Terminal */}
-          {selectedPickList && (
-            <div className="lg:col-span-8 space-y-5">
-              {/* Pick List Detail Card */}
-              <div className="p-6 odoo-glass-card rounded-2xl space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#EBDCE7]">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-black text-[#241621]">{selectedPickList.pickNumber}</h2>
-                      <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#f09e38]/15 text-[#d4821a] font-extrabold border border-[#f09e38]/30">
-                        Site Dispatch
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600 mt-0.5">
-                      Order Ref: <span className="font-bold text-[#714B67]">{selectedPickList.order?.orderNumber}</span>{' '}
-                      | Client: <span className="font-bold text-[#241621]">{selectedPickList.order?.customer?.name}</span>{' '}
-                      {selectedPickList.order?.customer?.city && (
-                        <span className="text-[#714B67]">({selectedPickList.order.customer.city})</span>
-                      )}
-                    </p>
-                  </div>
-
-                  {selectedPickList.status !== 'COMPLETED' && (
-                    <button
-                      onClick={handleValidateDelivery}
-                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#714B67] to-[#855278] hover:opacity-95 text-white font-black text-xs flex items-center gap-2 shadow-lg shadow-[#714B67]/30 transition-all cursor-pointer"
-                    >
-                      <Truck className="w-4 h-4 text-[#f09e38]" /> Validate Delivery (Rule 5 &amp; 6)
-                    </button>
-                  )}
-                </div>
-
-                {/* Warehouse Location & Reassignment Bar */}
-                <div className="p-3.5 rounded-xl bg-gradient-to-r from-[#F5EDF3] to-[#FAF6F9] border border-[#EBDCE7] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-[#714B67] text-[#f09e38] flex items-center justify-center shrink-0 shadow-xs">
-                      <Building2 className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-[#714B67] block tracking-wide">
-                        Assigned Fulfillment Warehouse
-                      </span>
-                      <span className="font-extrabold text-[#241621]">
-                        {selectedPickList.warehouse
-                          ? `${selectedPickList.warehouse.name} [City: ${selectedPickList.warehouse.city} | Zone: ${selectedPickList.warehouse.zone}]`
-                          : 'No Warehouse Assigned'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Switch Warehouse Dropdown */}
-                  {selectedPickList.status !== 'COMPLETED' && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">Switch Warehouse:</span>
-                      <select
-                        value={selectedPickList.warehouseId || ''}
-                        onChange={(e) => handleChangePickListWarehouse(e.target.value)}
-                        className="p-1.5 text-xs font-semibold rounded-lg border border-[#EBDCE7] bg-white text-[#241621] outline-none cursor-pointer"
-                      >
-                        {warehouses.map((wh) => (
-                          <option key={wh.id} value={wh.id}>
-                            {wh.city} ({wh.zone}) - {wh.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-
-                {/* Progress bar for serial fulfillment */}
-                <div className="p-4 rounded-xl bg-[#FAF6F9] border border-[#EBDCE7] space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-black text-[#241621] flex items-center gap-1.5">
-                      <PackageCheck className="w-4 h-4 text-[#714B67]" /> Serial Scan Fulfillment
-                    </span>
-                    <span className="font-mono font-black text-[#714B67]">
-                      {totalSerialScanned} / {totalSerialRequired} Serials ({scanProgressPercent}%)
-                    </span>
-                  </div>
-                  <div className="w-full bg-[#EBDCE7] h-2.5 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-[#f09e38] to-[#10b981] transition-all duration-300"
-                      style={{ width: `${scanProgressPercent}%` }}
-                    ></div>
-                  </div>
-                </div>
-
-                {/* Missing Serials Warning Banner */}
-                {validationError && (
-                  <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs space-y-2.5">
-                    <div className="flex items-center gap-2 font-black text-rose-800">
-                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                      {validationError.message}
-                    </div>
-                    <ul className="list-disc pl-5 space-y-1 text-rose-900 font-bold text-[11px]">
-                      {validationError.missing?.map((m) => (
-                        <li key={m.productId}>
-                          {m.productName} ({m.sku}): Needs {m.required}, Scanned {m.scanned} (Deficit: {m.missingCount})
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Equipment Manifest & Warehouse Stock Verification Table */}
-                <div>
-                  <div className="flex items-center justify-between mb-2.5">
-                    <h3 className="text-xs font-black text-[#714B67] uppercase tracking-wider">
-                      Equipment Manifest &amp; Warehouse Stock Verification
-                    </h3>
-                    <span className="text-[10px] text-slate-500 font-semibold">
-                      Stock in {selectedPickList.warehouse?.city || 'Warehouse'} ({selectedPickList.warehouse?.zone || 'Zone'})
-                    </span>
-                  </div>
-
-                  <div className="border border-[#EBDCE7] rounded-2xl overflow-hidden divide-y divide-[#EBDCE7]/60 text-xs bg-white shadow-xs">
-                    <div className="bg-[#F5EDF3] p-2.5 grid grid-cols-12 font-black text-[10px] text-[#714B67] uppercase tracking-wider">
-                      <div className="col-span-4">Component / SKU</div>
-                      <div className="col-span-2 text-center">Tracking</div>
-                      <div className="col-span-2 text-center">Warehouse Stock</div>
-                      <div className="col-span-2 text-right">Required</div>
-                      <div className="col-span-2 text-right">Picked / Scanned</div>
-                    </div>
-
-                    {selectedPickList.lines?.map((line) => {
-                      const scannedForLine = (selectedPickList.order?.serialNumbers || []).filter(
-                        (sn) => sn.productId === line.productId
-                      ).length;
-                      const effectivePicked = line.product?.isSerialTracked
-                        ? scannedForLine
-                        : Number(line.pickedQty || 0);
-                      const isFullyPicked = effectivePicked >= Number(line.requiredQty);
-                      const stockAvailable = line.warehouseStockQty ?? 0;
-                      const isOutOfStock = stockAvailable <= 0;
-                      const isStockDeficient = stockAvailable < Number(line.requiredQty);
-
-                      return (
-                        <div
-                          key={line.id}
-                          className={`p-3 grid grid-cols-12 items-center hover:bg-[#FAF6F9] transition-colors ${
-                            isOutOfStock ? 'bg-rose-50/40' : ''
-                          }`}
-                        >
-                          <div className="col-span-4 font-extrabold text-[#241621] truncate">
-                            {line.product?.name}
-                            <span className="block text-[10px] font-mono text-slate-400 font-normal">
-                              {line.product?.sku}
-                            </span>
-                          </div>
-
-                          <div className="col-span-2 text-center">
-                            {line.product?.isSerialTracked ? (
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-[#F5EDF3] text-[#714B67] border border-[#dabed3]">
-                                Serial Tracked
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-semibold text-slate-500">Bulk Qty</span>
-                            )}
-                          </div>
-
-                          {/* Warehouse Available Stock Badge */}
-                          <div className="col-span-2 text-center">
-                            {isOutOfStock ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[10px] font-black border border-rose-200">
-                                <ShieldAlert className="w-3 h-3" /> 0 (Out of Stock)
-                              </span>
-                            ) : isStockDeficient ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-black border border-amber-200">
-                                {stockAvailable} avail. (Low)
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-200">
-                                <Check className="w-3 h-3" /> {stockAvailable} In Stock
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="col-span-2 text-right font-bold text-slate-700">
-                            {Number(line.requiredQty)}
-                          </div>
-
-                          <div className="col-span-2 text-right font-black">
-                            {line.product?.isSerialTracked ? (
-                              <span className={isFullyPicked ? 'text-emerald-600' : 'text-[#f09e38]'}>
-                                {effectivePicked} / {Number(line.requiredQty)}
-                              </span>
-                            ) : (
-                              <div className="flex items-center justify-end gap-1.5">
-                                <span className={isFullyPicked ? 'text-emerald-600' : 'text-slate-700'}>
-                                  {effectivePicked} / {Number(line.requiredQty)}
-                                </span>
-                                {selectedPickList.status !== 'COMPLETED' && !isFullyPicked && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handlePickNonSerialItem(line)}
-                                    disabled={isOutOfStock}
-                                    className={`px-1.5 py-0.5 text-[10px] font-bold rounded shadow-2xs transition cursor-pointer ${
-                                      isOutOfStock
-                                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                                        : 'bg-[#714B67] text-white hover:bg-[#5b3c53]'
-                                    }`}
-                                    title={isOutOfStock ? 'Cannot pick: stock not present in warehouse' : 'Pick 1 unit'}
-                                  >
-                                    + Pick
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Serial Scanning Terminal Station */}
-                {selectedPickList.status !== 'COMPLETED' && (
-                  <div className="p-5 bg-gradient-to-br from-[#241621] to-[#382433] text-white rounded-2xl shadow-lg space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-xs text-[#dabed3] flex items-center gap-2">
-                        <Scan className="w-4 h-4 text-[#f09e38] animate-pulse" /> Serial Barcode Scanner Terminal
-                      </span>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={handleQuickDemoScan}
-                          disabled={isSelectedLineOutOfStock}
-                          className={`px-3 py-1 rounded-lg text-xs font-black transition shadow-xs flex items-center gap-1 ${
-                            isSelectedLineOutOfStock
-                              ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
-                              : 'bg-[#f09e38] hover:bg-[#d4821a] text-[#241621] cursor-pointer'
-                          }`}
-                        >
-                          <Zap className="w-3.5 h-3.5" /> 1-Click Demo Scan
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setScannerActive(!scannerActive)}
-                          className={`px-3 py-1 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-                            scannerActive
-                              ? 'bg-rose-500 text-white hover:bg-rose-600'
-                              : 'bg-white/10 text-white hover:bg-white/20 border border-white/20'
-                          }`}
-                        >
-                          <QrCode className="w-3.5 h-3.5 text-[#f09e38]" />
-                          {scannerActive ? 'Stop Camera' : 'Camera Scanner'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* OUT OF STOCK BLOCKING BANNER */}
-                    {isSelectedLineOutOfStock && (
-                      <div className="p-3 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs font-bold flex items-center gap-2">
-                        <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
-                        <span>
-                          CANNOT PICK: '{currentSelectedLine?.product?.name}' is NOT PRESENT in warehouse '
-                          {selectedPickList?.warehouse?.name}' ({selectedPickList?.warehouse?.city} -{' '}
-                          {selectedPickList?.warehouse?.zone}). Available stock: 0. Inward stock before picking.
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Camera Scanner Viewport */}
-                    {scannerActive && (
-                      <div className="p-3 bg-white rounded-xl border border-slate-300 relative overflow-hidden">
-                        <div className="scanner-laser absolute inset-x-0 h-1 bg-red-500 shadow-lg shadow-red-500/80 z-10 pointer-events-none"></div>
-                        <div id="reader" className="w-full text-slate-800"></div>
-                      </div>
-                    )}
-
-                    {/* Scanner Input Controls */}
-                    <div className="grid sm:grid-cols-12 gap-3 text-xs">
-                      <div className="sm:col-span-5">
-                        <label className="text-[11px] text-[#dabed3] font-bold mb-1 block">Component to Verify</label>
-                        <select
-                          value={selectedProductId}
-                          onChange={(e) => setSelectedProductId(e.target.value)}
-                          className="w-full p-2.5 rounded-xl border border-white/20 bg-[#1A0F17] text-white font-semibold outline-none focus:ring-2 focus:ring-[#f09e38]"
-                        >
-                          {selectedPickList.lines
-                            ?.filter((l) => l.product?.isSerialTracked)
-                            .map((l) => (
-                              <option key={l.productId} value={l.productId}>
-                                {l.product?.name} ({l.product?.sku}) — Stock: {l.warehouseStockQty ?? 0}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-
-                      <div className="sm:col-span-5">
-                        <label className="text-[11px] text-[#dabed3] font-bold mb-1 block">Serial Barcode String</label>
-                        <input
-                          type="text"
-                          value={scannedSerial}
-                          onChange={(e) => setScannedSerial(e.target.value)}
-                          placeholder="e.g. INV3K-SN-1029 or scan..."
-                          disabled={isSelectedLineOutOfStock}
-                          className="w-full p-2.5 rounded-xl border border-white/20 bg-[#1A0F17] text-white font-mono text-xs outline-none focus:ring-2 focus:ring-[#f09e38] disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2 flex items-end">
-                        <button
-                          type="button"
-                          onClick={() => handleScanSubmit()}
-                          disabled={isSelectedLineOutOfStock}
-                          className={`w-full py-2.5 rounded-xl text-xs font-black shadow-md transition-all ${
-                            isSelectedLineOutOfStock
-                              ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
-                              : 'bg-gradient-to-r from-[#f09e38] to-[#d4821a] text-[#241621] cursor-pointer hover:opacity-95'
-                          }`}
-                        >
-                          Verify
-                        </button>
-                      </div>
-                    </div>
-
-                    {scanMessage.text && (
-                      <div
-                        className={`p-2.5 rounded-xl text-xs font-bold ${
-                          scanMessage.type === 'success'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                        }`}
-                      >
-                        {scanMessage.text}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Scanned Serials Grid */}
-                <div>
-                  <h3 className="text-xs font-black text-[#241621] uppercase tracking-wider mb-2.5">
-                    Verified Serial Units ({selectedPickList.order?.serialNumbers?.length || 0})
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {(selectedPickList.order?.serialNumbers || []).map((sn) => (
-                      <span
-                        key={sn.id}
-                        className="px-3 py-1.5 rounded-xl bg-[#FAF6F9] border border-[#EBDCE7] text-[#241621] text-xs font-mono font-bold flex items-center gap-1.5 shadow-xs"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        {sn.serial} <span className="text-[10px] text-[#714B67] font-sans">({sn.product?.sku})</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* TAB 2: MULTI-ZONE WAREHOUSES & STOCK MANAGEMENT */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      {activeTab === 'warehouses' && (
-        <div className="space-y-6">
-          {/* Top Actions Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-[#714B67]" />
-              <div>
-                <h2 className="text-base font-black text-[#241621]">
-                  Warehouses Identified Uniquely by City &amp; Zone
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Manage multiple warehouses across cities and regional zones, with dedicated stock inventory.
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowCreateWarehouseModal(true)}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#714B67] to-[#855278] hover:opacity-95 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-[#714B67]/20 cursor-pointer self-start sm:self-auto"
-            >
-              <Plus className="w-4 h-4 text-[#f09e38]" /> Add New Warehouse (City + Zone)
-            </button>
+          {/* Search box */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+            <input
+              type="text"
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              placeholder="Search truck, order, customer, city..."
+              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-[#EBDCE7] bg-white outline-none focus:ring-1 focus:ring-[#714B67]"
+            />
           </div>
 
-          {/* Warehouses Grid Cards */}
-          <div className="grid md:grid-cols-3 gap-4">
-            {warehouses.map((wh) => {
-              const isSelected = selectedWarehouseId === wh.id;
+          {/* Queue Cards */}
+          <div className="space-y-2.5 overflow-y-auto max-h-[75vh] pr-1">
+            {filteredPickLists.map((p) => {
+              const isSelected = selectedPickList?.id === p.id;
+              const isDispatched = p.status === 'COMPLETED';
+
               return (
-                <div
-                  key={wh.id}
-                  onClick={() => setSelectedWarehouseId(wh.id)}
-                  className={`p-5 rounded-2xl border transition-all cursor-pointer ${
+                <button
+                  key={p.id}
+                  onClick={() => loadDetail(p.id)}
+                  className={`w-full p-4 rounded-2xl border text-left transition-all cursor-pointer relative ${
                     isSelected
-                      ? 'bg-gradient-to-br from-[#F5EDF3] to-white border-[#714B67] shadow-md ring-2 ring-[#714B67]/30'
+                      ? 'bg-gradient-to-r from-[#F5EDF3] to-white border-[#714B67] shadow-md ring-2 ring-[#714B67]/30'
                       : 'bg-white border-[#EBDCE7] hover:border-[#b886ad]'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div>
-                      <h3 className="font-black text-sm text-[#241621]">{wh.name}</h3>
-                      <span className="text-[10px] font-mono font-bold text-[#714B67]">{wh.code}</span>
-                    </div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-mono font-black text-xs text-[#714B67]">{p.pickNumber}</span>
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                        wh.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
+                        isDispatched
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          : 'bg-amber-100 text-amber-800 border border-amber-200'
                       }`}
                     >
-                      {wh.isActive ? 'Active' : 'Inactive'}
+                      {isDispatched ? 'Dispatched' : 'Truck Loading'}
                     </span>
                   </div>
 
-                  {/* Unique City & Zone Badges */}
-                  <div className="flex flex-wrap items-center gap-1.5 my-2.5">
-                    <span className="px-2.5 py-0.5 rounded-full bg-[#714B67]/10 text-[#714B67] text-[11px] font-black flex items-center gap-1 border border-[#714B67]/20">
-                      <MapPin className="w-3 h-3 text-[#f09e38]" /> City: {wh.city}
+                  <p className="font-black text-xs text-[#241621] truncate">{p.order?.customer?.name}</p>
+
+                  <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                    <span className="flex items-center gap-1 truncate">
+                      <MapPin className="w-3 h-3 text-[#f09e38] shrink-0" />
+                      {p.order?.customer?.city || 'Site City'}
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-[#f09e38]/15 text-[#d4821a] text-[11px] font-black border border-[#f09e38]/30">
-                      Zone: {wh.zone}
-                    </span>
+                    <span className="font-bold text-[#714B67]">{p.order?.capacityKw} kW Kit</span>
                   </div>
 
-                  {wh.address && (
-                    <p className="text-[11px] text-slate-500 line-clamp-1 mb-2">{wh.address}</p>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-2 pt-3 border-t border-[#EBDCE7] text-xs">
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-semibold">SKUs in Stock</span>
-                      <span className="font-black text-[#241621]">
-                        {wh.inStockSkuCount || 0} / {wh.totalSkuCount || 0}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-semibold">Total Stock Units</span>
-                      <span className="font-black text-[#714B67]">{wh.totalUnits || 0}</span>
-                    </div>
+                  <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
+                    <span className="text-slate-400 font-mono">Order: {p.order?.orderNumber}</span>
+                    <span className="font-extrabold text-[#241621] flex items-center gap-0.5">
+                      <span className="text-emerald-700">₹1,50,000 Cargo</span>
+                    </span>
                   </div>
-
-                  {wh.contactPerson && (
-                    <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-                      <span className="flex items-center gap-1">
-                        <User className="w-3 h-3 text-slate-400" /> {wh.contactPerson}
-                      </span>
-                      {wh.phone && (
-                        <span className="flex items-center gap-1">
-                          <Phone className="w-3 h-3 text-slate-400" /> {wh.phone}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
+                </button>
               );
             })}
           </div>
+        </div>
 
-          {/* Stock Table for Selected Warehouse */}
-          {selectedWarehouseDetail && (
-            <div className="odoo-glass-card p-6 rounded-2xl space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#EBDCE7]">
+        {/* Right 8 cols: The Dispatch Staging Area */}
+        {selectedPickList && (
+          <div className="lg:col-span-8 space-y-5">
+            <div className="odoo-glass-card p-6 rounded-3xl space-y-5">
+              {/* Top Order Details Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#EBDCE7]">
                 <div>
-                  <h3 className="text-base font-black text-[#241621] flex items-center gap-2">
-                    <Boxes className="w-4 h-4 text-[#714B67]" />
-                    Stock Inventory at {selectedWarehouseDetail.name}
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    City: <strong className="text-[#714B67]">{selectedWarehouseDetail.city}</strong> • Zone:{' '}
-                    <strong className="text-[#f09e38]">{selectedWarehouseDetail.zone}</strong> • Code:{' '}
-                    <span className="font-mono">{selectedWarehouseDetail.code}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm font-black text-[#714B67]">
+                      {selectedPickList.pickNumber}
+                    </span>
+                    <span className="text-xs text-slate-400">•</span>
+                    <span className="text-xs font-bold text-slate-600">
+                      SO: {selectedPickList.order?.orderNumber}
+                    </span>
+                  </div>
+                  <h2 className="text-xl font-black text-[#241621] mt-0.5">
+                    {selectedPickList.order?.customer?.name}
+                  </h2>
+                  <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#f09e38]" />
+                    {selectedPickList.order?.customer?.address || 'Site Address'},{' '}
+                    {selectedPickList.order?.customer?.city}
                   </p>
                 </div>
 
-                {/* Stock Search Input */}
-                <div className="relative w-full sm:w-64">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    value={stockSearch}
-                    onChange={(e) => setStockSearch(e.target.value)}
-                    placeholder="Search SKU or name..."
-                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-[#EBDCE7] bg-white outline-none focus:ring-1 focus:ring-[#714B67]"
-                  />
+                {/* Warehouse Assignment */}
+                <div className="flex flex-col sm:items-end gap-1">
+                  <label className="text-[10px] font-black uppercase text-[#714B67] flex items-center gap-1">
+                    <Building2 className="w-3 h-3 text-[#f09e38]" /> Loading Warehouse
+                  </label>
+                  <select
+                    value={selectedPickList.warehouseId || ''}
+                    onChange={(e) => handleChangeWarehouse(e.target.value)}
+                    disabled={selectedPickList.status === 'COMPLETED'}
+                    className="text-xs font-bold px-3 py-1.5 rounded-xl border border-[#714B67]/30 bg-[#FAF6F9] text-[#241621] outline-none"
+                  >
+                    <option value="">-- Unassigned --</option>
+                    {warehouses.map((wh) => (
+                      <option key={wh.id} value={wh.id}>
+                        {wh.name} ({wh.city} - {wh.zone})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              {loadingStock ? (
-                <div className="py-12 flex justify-center">
-                  <div className="w-6 h-6 border-2 border-[#714B67] border-t-transparent rounded-full animate-spin"></div>
+              {/* Serial Scanning Progress Gauge */}
+              <div className="p-4 rounded-2xl bg-[#FAF6F9] border border-[#EBDCE7] space-y-2">
+                <div className="flex justify-between items-center text-xs font-bold">
+                  <span className="text-[#241621] flex items-center gap-1.5">
+                    <Barcode className="w-4 h-4 text-[#714B67]" /> Serial Number Verification Before Departure
+                  </span>
+                  <span className={isAllSerialsScanned ? 'text-emerald-700 font-black' : 'text-[#714B67] font-black'}>
+                    {totalSerialsScanned} / {totalSerialsRequired} units scanned{' '}
+                    {isAllSerialsScanned ? '(All Verified ✓)' : '(Missing Serials)'}
+                  </span>
                 </div>
-              ) : (
+                <div className="w-full bg-[#EBDCE7] h-2.5 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      isAllSerialsScanned
+                        ? 'bg-emerald-600'
+                        : 'bg-gradient-to-r from-[#714B67] to-[#f09e38]'
+                    }`}
+                    style={{
+                      width: `${totalSerialsRequired > 0 ? (totalSerialsScanned / totalSerialsRequired) * 100 : 100}%`,
+                    }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* ───────────────────────────────────────────────────────────── */}
+              {/* SECTION 1: WHAT TO PACK (BOM Checklist from Ready Template) */}
+              {/* ───────────────────────────────────────────────────────────── */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-black text-[#241621] uppercase tracking-wider flex items-center gap-1.5">
+                    <Boxes className="w-4 h-4 text-[#714B67]" />
+                    What to Pack (Ready Kit for {selectedPickList.order?.capacityKw} kW System)
+                  </h3>
+                  <span className="text-[10px] text-slate-400 font-medium">
+                    Stock validated from assigned warehouse
+                  </span>
+                </div>
+
                 <div className="border border-[#EBDCE7] rounded-2xl overflow-hidden divide-y divide-[#EBDCE7]/60 text-xs bg-white shadow-xs">
-                  <div className="bg-[#F5EDF3] p-3 grid grid-cols-12 font-black text-[10px] text-[#714B67] uppercase tracking-wider">
-                    <div className="col-span-4">Product / SKU</div>
-                    <div className="col-span-2">Category</div>
-                    <div className="col-span-2 text-center">Tracking</div>
-                    <div className="col-span-2 text-right">Warehouse Stock</div>
-                    <div className="col-span-2 text-center">Action</div>
+                  <div className="bg-[#FAF6F9] p-3 grid grid-cols-12 font-black text-[10px] text-[#714B67] uppercase tracking-wider">
+                    <div className="col-span-5">Component / Specification</div>
+                    <div className="col-span-2 text-center">Req / Loaded</div>
+                    <div className="col-span-3 text-center">Warehouse Stock</div>
+                    <div className="col-span-2 text-right">Status / Action</div>
                   </div>
 
-                  {warehouseStockList.map((item) => (
+                  {lines.map((line) => {
+                    const isComplete = Number(line.pickedQty) >= Number(line.requiredQty);
+                    const isTracked = line.product?.isSerialTracked;
+                    const isOutOfStock = (line.warehouseStockQty ?? 0) <= 0;
+
+                    return (
+                      <div
+                        key={line.id}
+                        className={`p-3 grid grid-cols-12 items-center hover:bg-[#FAF6F9]/50 transition-colors ${
+                          isOutOfStock ? 'bg-rose-50/40' : ''
+                        }`}
+                      >
+                        <div className="col-span-5">
+                          <div className="font-extrabold text-[#241621] flex items-center gap-1.5">
+                            {line.product?.name}
+                            {isTracked && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-purple-100 text-[#714B67] border border-purple-200">
+                                Serialized
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-mono text-slate-400">{line.product?.sku}</span>
+                        </div>
+
+                        <div className="col-span-2 text-center font-bold">
+                          <span className={isComplete ? 'text-emerald-700 font-black' : 'text-[#241621]'}>
+                            {line.pickedQty} / {line.requiredQty} {line.product?.unit}
+                          </span>
+                        </div>
+
+                        <div className="col-span-3 text-center">
+                          {line.warehouseStockQty !== undefined ? (
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                                isOutOfStock
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {isOutOfStock ? '0 in Hub (Out of Stock)' : `${line.warehouseStockQty} available`}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-slate-400">No warehouse</span>
+                          )}
+                        </div>
+
+                        <div className="col-span-2 text-right">
+                          {isComplete ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-700">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Packed
+                            </span>
+                          ) : isTracked ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setActiveScanProductId(line.productId)}
+                                className={`px-2 py-1 rounded-lg text-[10px] font-black transition cursor-pointer ${
+                                  activeScanProductId === line.productId
+                                    ? 'bg-[#714B67] text-white shadow-xs'
+                                    : 'bg-[#F5EDF3] text-[#714B67] hover:bg-[#EBDCE7]'
+                                }`}
+                              >
+                                Target
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveScanProductId(line.productId);
+                                  handleQuickDemoScan(line.product?.sku || 'SN');
+                                }}
+                                className="px-2 py-1 rounded-lg text-[10px] font-black bg-gradient-to-r from-[#f09e38] to-[#d4821a] text-[#241621] hover:opacity-90 shadow-2xs transition cursor-pointer flex items-center gap-0.5"
+                                title="Auto-scan next unit"
+                              >
+                                <Zap className="w-2.5 h-2.5" /> Scan
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handlePickNonSerialItem(line)}
+                              disabled={isOutOfStock || selectedPickList.status === 'COMPLETED'}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition cursor-pointer ${
+                                isOutOfStock
+                                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                  : 'bg-[#f09e38] text-[#241621] hover:bg-[#e08e28]'
+                              }`}
+                            >
+                              Pack +1
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ───────────────────────────────────────────────────────────── */}
+              {/* SECTION 2: SERIAL NUMBER SCANNING TERMINAL */}
+              {/* ───────────────────────────────────────────────────────────── */}
+              {selectedPickList.status !== 'COMPLETED' && (
+                <div className="p-5 rounded-3xl bg-[#241621] text-white space-y-4">
+                  {/* Hidden element for photo scanner */}
+                  <div id="reader-dispatch-hidden-canvas" className="hidden"></div>
+                  <input
+                    type="file"
+                    ref={dispatchFileInputRef}
+                    accept="image/*"
+                    onChange={handleFileUploadScan}
+                    className="hidden"
+                  />
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Scan className="w-4 h-4 text-[#f09e38]" />
+                      <h3 className="text-xs font-black uppercase tracking-wider text-white">
+                        Scan Serial Numbers Before Departure
+                      </h3>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-400">
+                      Target Equipment:{' '}
+                      <strong className="text-[#f09e38]">
+                        {(lines.find((l) => l.productId === activeScanProductId)?.product?.name) || 'Serialized Item'}
+                      </strong>
+                    </span>
+                  </div>
+
+                  {/* Camera Error Banner */}
+                  {cameraError && (
+                    <div className="p-3 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>{cameraError}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => dispatchFileInputRef.current?.click()}
+                        className="px-2.5 py-1 rounded-lg bg-[#f09e38] text-[#241621] font-black text-[10px] shrink-0 cursor-pointer"
+                      >
+                        Upload Photo Instead
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Input Box & Scanner Action Buttons */}
+                  <div className="grid sm:grid-cols-12 gap-3">
+                    <div className="sm:col-span-6 flex gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={handleToggleCamera}
+                        className={`flex-1 min-w-[130px] py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition cursor-pointer ${
+                          cameraScannerActive
+                            ? 'bg-rose-600 text-white'
+                            : 'bg-white/10 hover:bg-white/20 text-white'
+                        }`}
+                      >
+                        <Camera className="w-4 h-4 text-[#f09e38]" />
+                        {cameraScannerActive ? 'Stop Camera' : 'Camera Scanner'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => dispatchFileInputRef.current?.click()}
+                        disabled={isDecodingFile}
+                        className="flex-1 min-w-[140px] py-2 px-3 rounded-xl text-xs font-black bg-gradient-to-r from-[#f09e38] to-[#d4821a] text-[#241621] hover:opacity-95 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                        title="Upload a picture of the barcode"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        {isDecodingFile ? 'Decoding...' : 'Upload Photo'}
+                      </button>
+
+                      {/* Instant Demo Simulation Buttons */}
+                      <button
+                        type="button"
+                        onClick={() => handleQuickDemoScan('INV')}
+                        className="py-2 px-2.5 rounded-xl text-[11px] font-black bg-white/10 hover:bg-white/20 text-white flex items-center gap-1 cursor-pointer"
+                        title="Simulate scanning Inverter serial barcode"
+                      >
+                        <Zap className="w-3 h-3 text-[#f09e38]" /> Inverter
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleQuickDemoScan('BAT')}
+                        className="py-2 px-2.5 rounded-xl text-[11px] font-black bg-white/10 hover:bg-white/20 text-white flex items-center gap-1 cursor-pointer"
+                        title="Simulate scanning Battery serial barcode"
+                      >
+                        <Zap className="w-3 h-3 text-blue-300" /> Battery
+                      </button>
+                    </div>
+
+                    <div className="sm:col-span-4">
+                      <input
+                        type="text"
+                        value={scannedSerialInput}
+                        onChange={(e) => setScannedSerialInput(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleScanSubmit()}
+                        placeholder="Scan with gun or type serial..."
+                        className="w-full p-2.5 rounded-xl border border-white/20 bg-[#1A0F17] text-white font-mono text-xs outline-none focus:ring-2 focus:ring-[#f09e38]"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2 flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => handleScanSubmit()}
+                        className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#f09e38] to-[#d4821a] text-[#241621] text-xs font-black shadow-md hover:opacity-95 cursor-pointer"
+                      >
+                        Verify Unit
+                      </button>
+                    </div>
+                  </div>
+
+                  {cameraScannerActive && (
+                    <div className="pt-2">
+                      <div id="reader-dispatch-box" className="w-full max-w-sm mx-auto overflow-hidden rounded-xl border border-white/20"></div>
+                    </div>
+                  )}
+
+                  {scanFeedback.text && (
                     <div
-                      key={item.productId}
-                      className={`p-3 grid grid-cols-12 items-center hover:bg-[#FAF6F9] transition-colors ${
-                        item.isOutOfStock ? 'bg-rose-50/30' : ''
+                      className={`p-2.5 rounded-xl text-xs font-bold ${
+                        scanFeedback.type === 'success'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                       }`}
                     >
-                      <div className="col-span-4 font-extrabold text-[#241621]">
-                        {item.name}
-                        <span className="block text-[10px] font-mono text-slate-400 font-normal">{item.sku}</span>
-                      </div>
+                      {scanFeedback.text}
+                    </div>
+                  )}
+                </div>
+              )}
 
-                      <div className="col-span-2">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
-                          {item.category}
+              {/* Scanned Serial Numbers Loaded on the Truck */}
+              <div>
+                <h3 className="text-xs font-black text-[#241621] uppercase tracking-wider mb-2 flex items-center justify-between">
+                  <span>Serial Numbers Loaded on Truck ({scannedSerials.length})</span>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    Assigned uniquely to {selectedPickList.order?.customer?.name}
+                  </span>
+                </h3>
+
+                {scannedSerials.length === 0 ? (
+                  <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>No serial numbers scanned yet. Click <strong>"Scan Inverter"</strong> above to verify units.</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {scannedSerials.map((sn) => (
+                      <span
+                        key={sn.id}
+                        className="px-3.5 py-2 rounded-xl bg-white border border-[#EBDCE7] text-[#241621] text-xs font-mono font-bold flex items-center gap-2 shadow-xs"
+                      >
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>{sn.serial}</span>
+                        <span className="text-[10px] text-[#714B67] font-sans font-extrabold bg-[#F5EDF3] px-2 py-0.5 rounded">
+                          {sn.product?.sku}
                         </span>
-                      </div>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-                      <div className="col-span-2 text-center">
-                        {item.isSerialTracked ? (
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-[#F5EDF3] text-[#714B67] border border-[#dabed3]">
-                            Serial Tracked
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-slate-400">Bulk Qty</span>
-                        )}
-                      </div>
+              {/* Validation Error Banner */}
+              {dispatchError && (
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-1.5">
+                  <div className="flex items-center gap-2 font-black">
+                    <ShieldAlert className="w-4 h-4 text-rose-600" /> Dispatch Blocked (Rule 5 Enforcement)
+                  </div>
+                  <p>{dispatchError.message}</p>
+                  {dispatchError.missing && (
+                    <ul className="list-disc list-inside text-[11px] text-rose-800 space-y-0.5">
+                      {dispatchError.missing.map((m, idx) => (
+                        <li key={idx}>
+                          <strong>{m.productName} ({m.sku})</strong>: {m.missingCount} unit(s) still unverified.
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
 
-                      <div className="col-span-2 text-right">
-                        {item.isOutOfStock ? (
-                          <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 text-[10px] font-black">
-                            0 Units (Out of Stock)
-                          </span>
-                        ) : (
-                          <span className="font-black text-sm text-[#714B67]">
-                            {item.warehouseQuantity} {item.unit}
-                          </span>
-                        )}
+              {/* ───────────────────────────────────────────────────────────── */}
+              {/* SECTION 3: THE CLIMAX — DISPATCH TRUCK & AUTO-START WARRANTIES */}
+              {/* ───────────────────────────────────────────────────────────── */}
+              {selectedPickList.status === 'COMPLETED' ? (
+                <div className="p-5 rounded-3xl bg-emerald-50 border border-emerald-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-6 h-6 text-emerald-600" />
+                      <div>
+                        <h4 className="text-sm font-black text-emerald-950">
+                          Truck Dispatched &amp; Delivery Validated
+                        </h4>
+                        <p className="text-xs text-emerald-800">
+                          Hardware loaded and delivered. Automatic warranty clocks started for all serial units.
+                        </p>
                       </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowGatePassModal(true)}
+                      className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5" /> View Gate Pass
+                    </button>
+                  </div>
 
-                      <div className="col-span-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStockTargetProduct(item);
-                            setStockQtyInput(item.isOutOfStock ? 10 : 5);
-                            setStockOperation('ADD');
-                            setShowStockModal(true);
-                          }}
-                          className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-[#714B67] hover:bg-[#5b3c53] text-white shadow-2xs transition cursor-pointer"
-                        >
-                          + Add Stock
-                        </button>
+                  {/* Auto-Started Warranty Clocks */}
+                  <div className="grid sm:grid-cols-2 gap-3 pt-2">
+                    <div className="p-3 rounded-xl bg-white border border-emerald-200 text-xs space-y-1">
+                      <span className="text-[10px] font-black uppercase text-purple-700 block">
+                        Inverter Warranty Clock Active
+                      </span>
+                      <div className="font-mono font-black text-[#241621]">2-Year Warranty Running</div>
+                      <div className="text-[10px] text-slate-500">
+                        Coverage: {new Date().toLocaleDateString()} &rarr; {new Date(Date.now() + 2 * 365 * 86400000).toLocaleDateString()}
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-white border border-emerald-200 text-xs space-y-1">
+                      <span className="text-[10px] font-black uppercase text-amber-700 block">
+                        Solar Panels Warranty Clock Active
+                      </span>
+                      <div className="font-mono font-black text-[#241621]">20-Year Performance Warranty Running</div>
+                      <div className="text-[10px] text-slate-500">
+                        Coverage: {new Date().toLocaleDateString()} &rarr; {new Date(Date.now() + 20 * 365 * 86400000).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="pt-3 border-t border-[#EBDCE7] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[11px] font-black uppercase tracking-wider text-[#714B67] block">
+                      Ready for Departure?
+                    </span>
+                    <p className="text-xs text-slate-500">
+                      {isAllSerialsScanned
+                        ? 'All serialized inverters and batteries scanned. Ready to depart.'
+                        : 'Truck on hold: Scan remaining required serial numbers above to unlock dispatch.'}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleDispatchTruckAndStartWarranties}
+                    disabled={!isAllSerialsScanned}
+                    className={`px-6 py-3 rounded-2xl font-black text-xs flex items-center gap-2 shadow-lg transition-all ${
+                      isAllSerialsScanned
+                        ? 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:opacity-95 text-white shadow-emerald-900/20 cursor-pointer animate-pulse'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <Truck className="w-4 h-4 text-amber-300" />
+                    Dispatch Truck &amp; Auto-Start Warranties (₹1,50,000 Cargo)
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* MODAL: DISPATCH GATE PASS & DELIVERY CHALLAN */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {showGatePassModal && selectedPickList && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl border border-[#EBDCE7] max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EBDCE7]">
+              <div>
+                <h3 className="text-base font-black text-[#241621] flex items-center gap-2">
+                  <Printer className="w-5 h-5 text-[#714B67]" />
+                  Dispatch Gate Pass &amp; Delivery Challan
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  SunPower Solutions Pvt Ltd • Official Warehouse Equipment Manifest
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGatePassModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Printable Pass Paper */}
+            <div className="p-5 rounded-2xl border border-slate-200 bg-white space-y-4 text-xs">
+              <div className="flex items-start justify-between border-b pb-3">
+                <div>
+                  <h4 className="font-black text-sm text-[#714B67]">SunPower Solutions Pvt Ltd</h4>
+                  <p className="text-[10px] text-slate-500">Solar Rooftop Installation Management</p>
+                </div>
+                <div className="text-right">
+                  <span className="font-mono font-black text-xs text-[#241621] block">
+                    {dispatchSuccessData?.deliveryNumber || 'DEL-2026-0001'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">Date: {new Date().toLocaleDateString()}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3 rounded-xl">
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-bold">Destination Customer</span>
+                  <span className="font-black text-[#241621]">{selectedPickList.order?.customer?.name}</span>
+                  <span className="text-[10px] text-slate-500 block">{selectedPickList.order?.customer?.address}</span>
+                  <span className="text-[10px] text-slate-500 block">{selectedPickList.order?.customer?.city}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-bold">Fulfillment Warehouse</span>
+                  <span className="font-black text-[#714B67]">{selectedPickList.warehouse?.name}</span>
+                  <span className="text-[10px] text-slate-500 block font-mono">
+                    Zone: {selectedPickList.warehouse?.zone}
+                  </span>
+                  <span className="text-[10px] text-emerald-700 block font-black mt-1">
+                    Cargo Value: ₹1,50,000 Verified
+                  </span>
+                </div>
+              </div>
+
+              {/* Scanned Serial Numbers Manifest */}
+              <div>
+                <h5 className="font-black text-[11px] uppercase text-[#241621] mb-1.5">
+                  Verified Hardware Serial Manifest (Warranties Auto-Activated)
+                </h5>
+                <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 text-[11px]">
+                  <div className="bg-slate-100 p-2 font-bold grid grid-cols-12 text-[10px] text-slate-600">
+                    <div className="col-span-5">Equipment SKU / Model</div>
+                    <div className="col-span-4">Scanned Serial #</div>
+                    <div className="col-span-3 text-right">Warranty Coverage</div>
+                  </div>
+                  {(selectedPickList.order?.serialNumbers || []).map((sn, i) => (
+                    <div key={i} className="p-2 grid grid-cols-12 items-center">
+                      <div className="col-span-5 font-bold text-[#241621] truncate">{sn.product?.name}</div>
+                      <div className="col-span-4 font-mono font-bold text-[#714B67]">{sn.serial}</div>
+                      <div className="col-span-3 text-right text-emerald-700 font-black">
+                        {sn.product?.warrantyYears || 2} Years Active
                       </div>
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* MODAL: CREATE WAREHOUSE (Unique City + Zone) */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      {showCreateWarehouseModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl border border-[#EBDCE7] max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[#EBDCE7]">
-              <div>
-                <h3 className="text-base font-black text-[#241621] flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-[#714B67]" />
-                  Add New Multi-Zone Warehouse
-                </h3>
-                <p className="text-[11px] text-slate-500">
-                  Each warehouse is uniquely identified by City and Zone combination.
-                </p>
               </div>
+
+              {/* Signatures */}
+              <div className="grid grid-cols-2 gap-8 pt-6 border-t border-slate-100 text-[10px] text-slate-500">
+                <div className="border-t border-slate-300 pt-1 text-center font-bold">
+                  Warehouse Dispatch Officer
+                </div>
+                <div className="border-t border-slate-300 pt-1 text-center font-bold">
+                  Truck Driver / Installation Crew Lead
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setShowCreateWarehouseModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+                onClick={() => setShowGatePassModal(false)}
+                className="px-4 py-2 rounded-xl border border-slate-300 font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                Close
               </button>
-            </div>
-
-            {createWhError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                {createWhError}
-              </div>
-            )}
-
-            <form onSubmit={handleCreateWarehouse} className="space-y-3.5 text-xs">
-              <div>
-                <label className="font-extrabold text-[#241621] mb-1 block">Warehouse Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={newWhName}
-                  onChange={(e) => setNewWhName(e.target.value)}
-                  placeholder="e.g. Pune North Solar Distribution Hub"
-                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] outline-none focus:ring-2 focus:ring-[#714B67]"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="font-extrabold text-[#241621] mb-1 block">Code *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newWhCode}
-                    onChange={(e) => setNewWhCode(e.target.value.toUpperCase())}
-                    placeholder="WH-PUN-01"
-                    className="w-full p-2.5 rounded-xl border border-[#EBDCE7] font-mono uppercase outline-none focus:ring-2 focus:ring-[#714B67]"
-                  />
-                </div>
-                <div>
-                  <label className="font-extrabold text-[#241621] mb-1 block">City *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newWhCity}
-                    onChange={(e) => setNewWhCity(e.target.value)}
-                    placeholder="e.g. Pune"
-                    className="w-full p-2.5 rounded-xl border border-[#EBDCE7] font-semibold outline-none focus:ring-2 focus:ring-[#714B67]"
-                  />
-                </div>
-                <div>
-                  <label className="font-extrabold text-[#241621] mb-1 block">Zone *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newWhZone}
-                    onChange={(e) => setNewWhZone(e.target.value)}
-                    placeholder="Zone-North"
-                    className="w-full p-2.5 rounded-xl border border-[#EBDCE7] font-semibold outline-none focus:ring-2 focus:ring-[#714B67]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="font-extrabold text-[#241621] mb-1 block">Physical Address</label>
-                <input
-                  type="text"
-                  value={newWhAddress}
-                  onChange={(e) => setNewWhAddress(e.target.value)}
-                  placeholder="Street, Industrial Area, Pincode"
-                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] outline-none focus:ring-2 focus:ring-[#714B67]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-extrabold text-[#241621] mb-1 block">Manager / Contact</label>
-                  <input
-                    type="text"
-                    value={newWhContact}
-                    onChange={(e) => setNewWhContact(e.target.value)}
-                    placeholder="Contact person name"
-                    className="w-full p-2.5 rounded-xl border border-[#EBDCE7] outline-none focus:ring-2 focus:ring-[#714B67]"
-                  />
-                </div>
-                <div>
-                  <label className="font-extrabold text-[#241621] mb-1 block">Contact Phone</label>
-                  <input
-                    type="text"
-                    value={newWhPhone}
-                    onChange={(e) => setNewWhPhone(e.target.value)}
-                    placeholder="+91 98490 12345"
-                    className="w-full p-2.5 rounded-xl border border-[#EBDCE7] outline-none focus:ring-2 focus:ring-[#714B67]"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateWarehouseModal(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={createWhSubmitting}
-                  className="px-5 py-2 rounded-xl bg-[#714B67] hover:bg-[#5b3c53] text-white font-black shadow-md cursor-pointer disabled:opacity-50"
-                >
-                  {createWhSubmitting ? 'Creating...' : 'Create Warehouse'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* MODAL: ADD / INWARD STOCK TO WAREHOUSE */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      {showStockModal && stockTargetProduct && selectedWarehouseDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-3xl border border-[#EBDCE7] max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[#EBDCE7]">
-              <div>
-                <h3 className="text-base font-black text-[#241621]">Inward Stock / Adjust Inventory</h3>
-                <p className="text-[11px] text-slate-500">
-                  {selectedWarehouseDetail.name} ({selectedWarehouseDetail.city} - {selectedWarehouseDetail.zone})
-                </p>
-              </div>
               <button
                 type="button"
-                onClick={() => setShowStockModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+                onClick={() => window.print()}
+                className="px-5 py-2 rounded-xl bg-[#714B67] hover:bg-[#5b3c53] text-white font-black text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <Printer className="w-3.5 h-3.5 text-[#f09e38]" /> Print Gate Pass (Challan)
               </button>
             </div>
-
-            <div className="p-3 rounded-xl bg-[#FAF6F9] border border-[#EBDCE7] space-y-1 text-xs">
-              <span className="font-extrabold text-[#241621] block">{stockTargetProduct.name}</span>
-              <div className="flex items-center justify-between text-[11px] text-slate-500">
-                <span>SKU: {stockTargetProduct.sku}</span>
-                <span>
-                  Current Warehouse Stock:{' '}
-                  <strong className="text-[#714B67] font-black">{stockTargetProduct.warehouseQuantity} units</strong>
-                </span>
-              </div>
-            </div>
-
-            <form onSubmit={handleStockUpdateSubmit} className="space-y-3.5 text-xs">
-              <div>
-                <label className="font-extrabold text-[#241621] mb-1 block">Operation Type</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setStockOperation('ADD')}
-                    className={`py-2 px-3 rounded-xl font-black text-xs transition cursor-pointer border ${
-                      stockOperation === 'ADD'
-                        ? 'bg-[#714B67] text-white border-[#714B67] shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    + Add / Inward Qty
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStockOperation('SET')}
-                    className={`py-2 px-3 rounded-xl font-black text-xs transition cursor-pointer border ${
-                      stockOperation === 'SET'
-                        ? 'bg-[#714B67] text-white border-[#714B67] shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    Set Exact Count
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="font-extrabold text-[#241621] mb-1 block">
-                  {stockOperation === 'ADD' ? 'Quantity to Inward *' : 'New Exact Stock Level *'}
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  required
-                  value={stockQtyInput}
-                  onChange={(e) => setStockQtyInput(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] font-black text-sm text-[#714B67] outline-none focus:ring-2 focus:ring-[#714B67]"
-                />
-              </div>
-
-              <div>
-                <label className="font-extrabold text-[#241621] mb-1 block">Notes / Supplier Reference</label>
-                <input
-                  type="text"
-                  value={stockNotes}
-                  onChange={(e) => setStockNotes(e.target.value)}
-                  placeholder="e.g. PO-2026-081 Inward shipment or cycle count"
-                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] outline-none focus:ring-2 focus:ring-[#714B67]"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowStockModal(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={stockSubmitting}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#f09e38] to-[#d4821a] text-[#241621] font-black shadow-md cursor-pointer hover:opacity-95 disabled:opacity-50"
-                >
-                  {stockSubmitting ? 'Updating...' : 'Confirm Stock'}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

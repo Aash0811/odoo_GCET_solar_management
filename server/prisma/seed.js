@@ -112,9 +112,9 @@ async function main() {
     prisma.user.create({
       data: {
         companyId: company.id,
-        name: "Suresh Rao (Customer)",
+        name: "Ravi Kumar (Customer)",
         email: "customer@sunpower.com",
-        phone: "9876543210",
+        phone: "9000000001",
         passwordHash,
         role: "CUSTOMER",
       },
@@ -131,13 +131,13 @@ async function main() {
     { sku: "PAN-330-POLY", name: "Polycrystalline 330W Solar PV Module", category: "PANEL", isSerialTracked: true, warrantyYears: 20, costPrice: 5800, salePrice: 8200, stockQty: 90 },
     { sku: "PAN-550-BIFACIAL", name: "Bi-facial Dual Glass 550W Module", category: "PANEL", isSerialTracked: true, warrantyYears: 25, costPrice: 11000, salePrice: 15500, stockQty: 120 },
     // Inverters
-    { sku: "INV-3KW-ONGRID", name: "3 kW Single-Phase On-Grid String Inverter", category: "INVERTER", isSerialTracked: true, warrantyYears: 5, costPrice: 24000, salePrice: 34000, stockQty: 25 },
-    { sku: "INV-5KW-ONGRID", name: "5 kW Three-Phase On-Grid String Inverter", category: "INVERTER", isSerialTracked: true, warrantyYears: 5, costPrice: 38000, salePrice: 52000, stockQty: 20 },
-    { sku: "INV-3KW-HYBRID", name: "3 kW Hybrid Bidirectional Inverter", category: "INVERTER", isSerialTracked: true, warrantyYears: 5, costPrice: 42000, salePrice: 58000, stockQty: 12 },
-    { sku: "INV-5KW-OFFGRID", name: "5 kW Pure Sine Wave Off-Grid Inverter", category: "INVERTER", isSerialTracked: true, warrantyYears: 5, costPrice: 46000, salePrice: 64000, stockQty: 8 },
+    { sku: "INV-3KW-ONGRID", name: "3 kW Single-Phase On-Grid String Inverter", category: "INVERTER", isSerialTracked: true, warrantyYears: 2, costPrice: 24000, salePrice: 34000, stockQty: 25 },
+    { sku: "INV-5KW-ONGRID", name: "5 kW Three-Phase On-Grid String Inverter", category: "INVERTER", isSerialTracked: true, warrantyYears: 2, costPrice: 38000, salePrice: 52000, stockQty: 20 },
+    { sku: "INV-3KW-HYBRID", name: "3 kW Hybrid Bidirectional Inverter", category: "INVERTER", isSerialTracked: true, warrantyYears: 2, costPrice: 42000, salePrice: 58000, stockQty: 12 },
+    { sku: "INV-5KW-OFFGRID", name: "5 kW Pure Sine Wave Off-Grid Inverter", category: "INVERTER", isSerialTracked: true, warrantyYears: 2, costPrice: 46000, salePrice: 64000, stockQty: 8 },
     // Batteries
-    { sku: "BAT-48V-100AH", name: "Lithium Iron Phosphate (LiFePO4) 48V 100Ah", category: "BATTERY", isSerialTracked: true, warrantyYears: 5, costPrice: 62000, salePrice: 84000, stockQty: 15 },
-    { sku: "BAT-12V-150AH", name: "Solar Tubular Lead Acid C10 12V 150Ah", category: "BATTERY", isSerialTracked: true, warrantyYears: 3, costPrice: 11500, salePrice: 16500, stockQty: 30 },
+    { sku: "BAT-48V-100AH", name: "Lithium Iron Phosphate (LiFePO4) 48V 100Ah", category: "BATTERY", isSerialTracked: true, warrantyYears: 2, costPrice: 62000, salePrice: 84000, stockQty: 15 },
+    { sku: "BAT-12V-150AH", name: "Solar Tubular Lead Acid C10 12V 150Ah", category: "BATTERY", isSerialTracked: true, warrantyYears: 2, costPrice: 11500, salePrice: 16500, stockQty: 30 },
     // Structures
     { sku: "STR-GI-1KW", name: "Hot-Dip Galvanized Rooftop Structure (per kW)", category: "STRUCTURE", isSerialTracked: false, warrantyYears: 10, costPrice: 3200, salePrice: 4800, stockQty: 150 },
     { sku: "STR-ELEVATED-1KW", name: "Elevated High-Rise Rooftop Structure (per kW)", category: "STRUCTURE", isSerialTracked: false, warrantyYears: 10, costPrice: 5500, salePrice: 8500, stockQty: 60 },

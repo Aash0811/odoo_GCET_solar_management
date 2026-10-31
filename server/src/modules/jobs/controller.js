@@ -45,17 +45,18 @@ async function updateJobProgress(req, res, next) {
 
 async function uploadPhoto(req, res, next) {
   try {
+    const files = req.files?.photos || req.files?.photo || (req.file ? [req.file] : []);
     const photo = await jobsService.uploadJobPhoto(
       req.companyId,
       req.params.id,
-      req.file,
+      files,
       req.body.caption,
       req.user.id,
       req
     );
     return res.status(201).json({
       success: true,
-      message: "Job photo uploaded successfully.",
+      message: "Job photo(s) uploaded successfully.",
       data: photo,
     });
   } catch (error) {

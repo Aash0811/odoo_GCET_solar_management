@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { dashboardApi, companyApi } from '../../api';
+import { useAuth } from '../../hooks/useAuth';
 import {
   DollarSign,
   TrendingUp,
@@ -11,6 +13,7 @@ import {
   ShieldAlert,
   Flame,
   ArrowUpRight,
+  ArrowDownRight,
   Copy,
   ExternalLink,
   Sparkles,
@@ -19,8 +22,14 @@ import {
   Calendar,
   Layers,
   Building2,
+  Users,
   X,
   Save,
+  Wallet,
+  Receipt,
+  Search,
+  Filter,
+  Check,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -34,12 +43,20 @@ import {
 } from 'recharts';
 
 export default function AdminDashboardPage() {
+  const { user, role } = useAuth();
+  const isAdmin = role === 'ADMIN';
+  const isAccountant = role === 'ACCOUNTANT';
+
   const [timeframe, setTimeframe] = useState('month');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareLink, setShareLink] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // P&L Ledger filters
+  const [plFilter, setPlFilter] = useState('ALL'); // 'ALL' | 'PROFIT' | 'LOSS'
+  const [plSearch, setPlSearch] = useState('');
 
   // Company Profile Modal State (Single Company Settings)
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
@@ -156,9 +173,23 @@ export default function AdminDashboardPage() {
 
   const kpis = data?.kpis || {};
   const unfinishedJobs = data?.unfinishedJobs || [];
-  const lossJobs = (data?.jobCostings || []).filter((j) => j.isLossMaking);
+  const allJobCostings = data?.jobCostings || [];
+  const lossJobs = allJobCostings.filter((j) => j.isLossMaking);
   const expiringWarranties = data?.expiringWarranties || [];
   const openTickets = data?.openTicketsWithAge || [];
+
+  // Filtered P&L job list
+  const filteredJobCostings = allJobCostings.filter((job) => {
+    if (plFilter === 'PROFIT' && job.isLossMaking) return false;
+    if (plFilter === 'LOSS' && !job.isLossMaking) return false;
+    if (plSearch.trim()) {
+      const q = plSearch.toLowerCase();
+      const matchOrder = (job.orderNumber || '').toLowerCase().includes(q);
+      const matchCustomer = (job.customerName || '').toLowerCase().includes(q);
+      if (!matchOrder && !matchCustomer) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="min-h-full space-y-7 bg-slate-50/80 p-1 sm:p-2">
@@ -168,9 +199,19 @@ export default function AdminDashboardPage() {
           <div className="flex items-center gap-3">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight">Executive Solar Suite</h1>
+            {isAccountant && (
+              <span className="px-3 py-1 rounded-full text-xs font-black bg-purple-100 text-[#714b67] border border-purple-200 flex items-center gap-1.5 shadow-xs">
+                <Receipt className="w-3.5 h-3.5 text-[#714b67]" /> Accountant P&amp;L Audit Mode
+              </span>
+            )}
+            {isAdmin && (
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-900 text-white">
+                Admin Full Access
+              </span>
+            )}
           </div>
           <p className="text-xs sm:text-sm text-slate-500 font-medium mt-2 max-w-2xl leading-relaxed">
-            Real-time Telemetry: Commercial Pipeline • Production Warranties • Financial Margin Audits
+            Real-time Financial Telemetry: Commercial Pipeline • Profit &amp; Loss Audits • Direct BOM &amp; Labor Margins
           </p>
         </div>
 
@@ -198,16 +239,43 @@ export default function AdminDashboardPage() {
             disabled={downloadingCsv}
             className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-black shadow-xs transition cursor-pointer disabled:opacity-50"
           >
-            <Download className="w-3.5 h-3.5 text-amber-500" /> {downloadingCsv ? 'Downloading...' : 'CSV Report'}
+            <Download className="w-3.5 h-3.5 text-amber-500" /> {downloadingCsv ? 'Downloading...' : 'Export P&L CSV'}
           </button>
 
-          {/* Company Profile Settings Button */}
-          <button
-            onClick={handleOpenCompanySettings}
+          {/* Direct link to Finance Costing & Invoices */}
+          <Link
+            to="/finance/costing"
             className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-black shadow-xs transition cursor-pointer"
           >
-            <Building2 className="w-3.5 h-3.5 text-amber-500" /> Company Profile
-          </button>
+            <Wallet className="w-3.5 h-3.5 text-emerald-600" /> Costing Ledger
+          </Link>
+
+          <Link
+            to="/finance/invoices"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-black shadow-xs transition cursor-pointer"
+          >
+            <Receipt className="w-3.5 h-3.5 text-blue-600" /> Invoices &amp; GST
+          </Link>
+
+          {/* User Management Button - Admin Only */}
+          {isAdmin && (
+            <Link
+              to="/admin/users"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-black shadow-xs transition cursor-pointer"
+            >
+              <Users className="w-3.5 h-3.5 text-purple-600" /> Manage Team &amp; Roles
+            </Link>
+          )}
+
+          {/* Company Profile Settings Button - Admin Only */}
+          {isAdmin && (
+            <button
+              onClick={handleOpenCompanySettings}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-black shadow-xs transition cursor-pointer"
+            >
+              <Building2 className="w-3.5 h-3.5 text-amber-500" /> Company Profile
+            </button>
+          )}
 
           {/* Shareable Link Button */}
           <button
@@ -219,9 +287,9 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* KPI Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5">
-        {/* Revenue Card */}
+      {/* Financial & Operational KPI Cards - 5-Metric Executive Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 sm:gap-5">
+        {/* 1. Revenue Card */}
         <div className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-slate-200/40 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between relative overflow-hidden group min-h-[168px]">
           <div className="absolute top-0 left-0 h-1.5 w-full bg-gradient-to-r from-slate-900 via-emerald-500 to-[#f09e38]"></div>
           <div className="flex items-center justify-between text-slate-500 mb-2">
@@ -240,7 +308,50 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Outstanding Card */}
+        {/* 2. Net Profit & Gross Margin Card */}
+        <div className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-slate-200/40 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between relative overflow-hidden group min-h-[168px]">
+          <div className="absolute top-0 left-0 h-1.5 w-full bg-gradient-to-r from-emerald-500 to-teal-600"></div>
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800">Net Profit (P&amp;L)</span>
+            <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 shadow-xs group-hover:scale-110 transition-transform">
+              <TrendingUp className="w-5 h-5 text-emerald-600" />
+            </div>
+          </div>
+          <div>
+            <div className="text-2xl sm:text-3xl font-black text-emerald-700 tracking-tight">
+              ₹{(kpis.totalNetProfit || 0).toLocaleString('en-IN')}
+            </div>
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              <span className="text-[11px] font-black bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md border border-emerald-300">
+                {kpis.overallGrossMargin || 0}% Margin
+              </span>
+              <span className="text-[10px] text-slate-500 font-semibold">
+                {kpis.profitableJobsCount || 0} profitable
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Direct Job Costs (BOM + Labor) */}
+        <div className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-slate-200/40 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between relative overflow-hidden group min-h-[168px]">
+          <div className="absolute top-0 left-0 h-1.5 w-full bg-gradient-to-r from-purple-500 to-indigo-600"></div>
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-black uppercase tracking-wider text-purple-800">Direct Job Costs</span>
+            <div className="p-2.5 rounded-xl bg-purple-50 text-[#714b67] shadow-xs group-hover:scale-110 transition-transform">
+              <Wallet className="w-5 h-5 text-[#714b67]" />
+            </div>
+          </div>
+          <div>
+            <div className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight">
+              ₹{(kpis.totalJobCosts || 0).toLocaleString('en-IN')}
+            </div>
+            <p className="text-[10.5px] text-purple-900 font-medium mt-1.5 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200 truncate">
+              BOM: ₹{(kpis.totalBOMCost || 0).toLocaleString('en-IN')} • Labor: ₹{(kpis.totalLaborCost || 0).toLocaleString('en-IN')}
+            </p>
+          </div>
+        </div>
+
+        {/* 4. Receivables Card */}
         <div className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-slate-200/40 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between relative overflow-hidden group min-h-[168px]">
           <div className="absolute top-0 left-0 h-1.5 w-full bg-gradient-to-r from-amber-400 to-amber-500"></div>
           <div className="flex items-center justify-between text-slate-500 mb-2">
@@ -259,24 +370,7 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Conversion Rate Card */}
-        <div className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-slate-200/40 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between relative overflow-hidden group min-h-[168px]">
-          <div className="absolute top-0 left-0 h-1.5 w-full bg-gradient-to-r from-emerald-500 to-teal-500"></div>
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800">Pipeline Win Rate</span>
-            <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 shadow-xs group-hover:scale-110 transition-transform">
-              <TrendingUp className="w-5 h-5 text-emerald-600" />
-            </div>
-          </div>
-          <div>
-            <div className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight">{kpis.conversionRate || 0}%</div>
-            <p className="text-[11px] text-emerald-800 font-bold mt-1.5 bg-emerald-50 px-2 py-0.5 rounded-md w-fit border border-emerald-200">
-              {kpis.newLeads || 0} active / {kpis.ordersCount || 0} converted
-            </p>
-          </div>
-        </div>
-
-        {/* Rule 9 Loss-Making Jobs Alert Card */}
+        {/* 5. Rule 9 Loss-Making Jobs Alert Card */}
         <div className="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-slate-200/40 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between relative overflow-hidden group min-h-[168px]">
           <div className="absolute top-0 left-0 h-1.5 w-full bg-gradient-to-r from-rose-500 to-rose-600"></div>
           <div className="flex items-center justify-between text-slate-500 mb-2">
@@ -352,6 +446,222 @@ export default function AdminDashboardPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      </div>
+
+      {/* Executive Order Profit & Loss (P&L) Commercial Ledger */}
+      <div className="rounded-3xl bg-white border border-slate-200/90 shadow-sm p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 rounded-xl bg-purple-50 text-[#714b67] border border-purple-200">
+                <Receipt className="w-4 h-4 text-[#714b67]" />
+              </span>
+              <div>
+                <h2 className="text-base font-black text-slate-900 tracking-tight">Order Profit &amp; Loss (P&amp;L) Ledger</h2>
+                <p className="text-xs text-slate-500 font-medium">
+                  Detailed job costing breakdown: Equipment BOM, technician labor payouts, net profitability, and gross margin per order.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Filter Tabs: ALL / PROFIT / LOSS */}
+            <div className="flex bg-slate-100 p-1 rounded-xl text-xs font-bold border border-slate-200">
+              <button
+                onClick={() => setPlFilter('ALL')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  plFilter === 'ALL' ? 'bg-slate-900 text-white font-black shadow-xs' : 'text-slate-600 hover:bg-white/60'
+                }`}
+              >
+                All Orders ({allJobCostings.length})
+              </button>
+              <button
+                onClick={() => setPlFilter('PROFIT')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  plFilter === 'PROFIT' ? 'bg-emerald-600 text-white font-black shadow-xs' : 'text-slate-600 hover:bg-white/60'
+                }`}
+              >
+                Profitable ({allJobCostings.filter((j) => !j.isLossMaking).length})
+              </button>
+              <button
+                onClick={() => setPlFilter('LOSS')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  plFilter === 'LOSS' ? 'bg-rose-600 text-white font-black shadow-xs' : 'text-slate-600 hover:bg-white/60'
+                }`}
+              >
+                Loss-Making ({lossJobs.length})
+              </button>
+            </div>
+
+            {/* Search Box */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search order or client..."
+                value={plSearch}
+                onChange={(e) => setPlSearch(e.target.value)}
+                className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#714b67] w-48 sm:w-56"
+              />
+              {plSearch && (
+                <button
+                  onClick={() => setPlSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* CSV export */}
+            <button
+              onClick={handleDownloadCsv}
+              disabled={downloadingCsv}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-500" /> Export CSV
+            </button>
+          </div>
+        </div>
+
+        {/* Ledger Table */}
+        <div className="overflow-x-auto rounded-2xl border border-slate-200">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-slate-100/80 text-slate-700 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider">
+                <th className="py-3 px-4">Sales Order &amp; Client</th>
+                <th className="py-3 px-3 text-right">Capacity</th>
+                <th className="py-3 px-3 text-right">Revenue (₹)</th>
+                <th className="py-3 px-3 text-right">BOM Costs (₹)</th>
+                <th className="py-3 px-3 text-right">Labor Outlay (₹)</th>
+                <th className="py-3 px-3 text-right">Direct Costs (₹)</th>
+                <th className="py-3 px-3 text-right">Net Profit / (Loss)</th>
+                <th className="py-3 px-3 text-right">Margin %</th>
+                <th className="py-3 px-4 text-center">P&amp;L Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+              {filteredJobCostings.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-400">
+                    No orders matching the selected filter ({plFilter}) or search criteria.
+                  </td>
+                </tr>
+              ) : (
+                filteredJobCostings.map((job) => (
+                  <tr
+                    key={job.orderId}
+                    className={`hover:bg-slate-50/80 transition-colors ${
+                      job.isLossMaking ? 'bg-rose-50/30' : ''
+                    }`}
+                  >
+                    <td className="py-3 px-4">
+                      <div className="font-black text-slate-950 font-mono text-xs">
+                        {job.orderNumber}
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-medium">
+                        {job.customerName || 'Direct Customer'}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-slate-700">
+                      {job.capacityKw} kW
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-slate-900">
+                      ₹{Number(job.revenue || 0).toLocaleString('en-IN')}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-slate-600">
+                      ₹{Number(job.bomCost || 0).toLocaleString('en-IN')}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono text-slate-600">
+                      ₹{Number(job.technicianCost || 0).toLocaleString('en-IN')}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-bold text-slate-800">
+                      ₹{Number(job.totalCost || 0).toLocaleString('en-IN')}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-black">
+                      {job.isLossMaking ? (
+                        <span className="text-rose-600">
+                          -₹{Math.abs(Number(job.profit || 0)).toLocaleString('en-IN')}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-700">
+                          +₹{Number(job.profit || 0).toLocaleString('en-IN')}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono font-black">
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-[10px] ${
+                          job.isLossMaking
+                            ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                            : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        }`}
+                      >
+                        {job.profitMargin}%
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {job.isLossMaking ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300">
+                          <Flame className="w-3 h-3 text-rose-600" /> LOSS (Rule 9)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-700 border border-emerald-300">
+                          <Check className="w-3 h-3 text-emerald-600" /> PROFITABLE
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            {/* Table Footer with Aggregates */}
+            {filteredJobCostings.length > 0 && (
+              <tfoot>
+                <tr className="bg-slate-50 font-black text-slate-900 border-t-2 border-slate-200 text-xs">
+                  <td className="py-3 px-4">Ledger Totals ({filteredJobCostings.length} orders)</td>
+                  <td className="py-3 px-3 text-right font-mono">
+                    {filteredJobCostings.reduce((sum, j) => sum + Number(j.capacityKw || 0), 0).toFixed(1)} kW
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-slate-950">
+                    ₹{filteredJobCostings.reduce((sum, j) => sum + Number(j.revenue || 0), 0).toLocaleString('en-IN')}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-slate-700">
+                    ₹{filteredJobCostings.reduce((sum, j) => sum + Number(j.bomCost || 0), 0).toLocaleString('en-IN')}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-slate-700">
+                    ₹{filteredJobCostings.reduce((sum, j) => sum + Number(j.technicianCost || 0), 0).toLocaleString('en-IN')}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono text-slate-950">
+                    ₹{filteredJobCostings.reduce((sum, j) => sum + Number(j.totalCost || 0), 0).toLocaleString('en-IN')}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono">
+                    {(() => {
+                      const net = filteredJobCostings.reduce((sum, j) => sum + Number(j.profit || 0), 0);
+                      return net >= 0 ? (
+                        <span className="text-emerald-700">+₹{net.toLocaleString('en-IN')}</span>
+                      ) : (
+                        <span className="text-rose-600">-₹{Math.abs(net).toLocaleString('en-IN')}</span>
+                      );
+                    })()}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono">
+                    {(() => {
+                      const rev = filteredJobCostings.reduce((sum, j) => sum + Number(j.revenue || 0), 0);
+                      const net = filteredJobCostings.reduce((sum, j) => sum + Number(j.profit || 0), 0);
+                      const margin = rev > 0 ? ((net / rev) * 100).toFixed(1) : '0';
+                      return `${margin}%`;
+                    })()}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <span className="text-[10px] text-slate-500 font-bold">Ledger Verified</span>
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
       </div>
 

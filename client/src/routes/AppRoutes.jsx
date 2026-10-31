@@ -9,15 +9,25 @@ import SharedDashboardPage from '../pages/public/SharedDashboardPage';
 import CompanyWebsitePage from '../pages/public/CompanyWebsitePage';
 import SharedQuoteViewPage from '../pages/public/SharedQuoteViewPage';
 import AdminDashboardPage from '../pages/admin/AdminDashboardPage';
+import UserManagementPage from '../pages/admin/UserManagementPage';
 import LeadBoardPage from '../pages/sales/LeadBoardPage';
 import QuoteBuilderPage from '../pages/sales/QuoteBuilderPage';
 import OrderPaymentsPage from '../pages/sales/OrderPaymentsPage';
 import PickListDispatchPage from '../pages/warehouse/PickListDispatchPage';
+import InventoryPage from '../pages/warehouse/InventoryPage';
+import SerialScannerPage from '../pages/warehouse/SerialScannerPage';
 import TechnicianJobsPage from '../pages/technician/TechnicianJobsPage';
 import MobileInstallFormPage from '../pages/technician/MobileInstallFormPage';
 import ServiceDeskPage from '../pages/support/ServiceDeskPage';
 import FinancePage from '../pages/finance/FinancePage';
 import CustomerPortalPage from '../pages/customer/CustomerPortalPage';
+import CustomerDashboardPage from '../pages/customer/CustomerDashboardPage';
+import QuotePage from '../pages/customer/QuotePage';
+import OrderTrackingPage from '../pages/customer/OrderTrackingPage';
+import InstalledProductsPage from '../pages/customer/InstalledProductsPage';
+import WarrantyPage from '../pages/customer/WarrantyPage';
+import AcceptancePage from '../pages/customer/AcceptancePage';
+import RaiseTicketPage from '../pages/customer/RaiseTicketPage';
 import SolarPackageConfiguratorPage from '../pages/admin/SolarPackageConfiguratorPage';
 import SurveysPage from '../pages/operations/SurveysPage';
 import { useAuth } from '../hooks/useAuth';
@@ -52,16 +62,21 @@ export default function AppRoutes() {
       {/* Protected Routes inside DashboardLayout */}
       <Route element={<ProtectedRoute />}>
         <Route element={<DashboardLayout />}>
-          {/* Admin routes */}
-          <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
+          {/* Admin & Accountant Executive Dashboard & Finance routes */}
+          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'ACCOUNTANT']} />}>
             <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
             <Route path="/finance/costing" element={<FinancePage defaultTab="costing" />} />
             <Route path="/finance/payouts" element={<FinancePage defaultTab="payouts" />} />
             <Route path="/finance/invoices" element={<FinancePage defaultTab="invoices" />} />
           </Route>
 
-          {/* Master Product & Package Catalogue (Admin edits, others read-only) */}
-          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SALESMAN', 'TECHNICIAN', 'WAREHOUSE', 'SUPPORT']} />}>
+          {/* Admin only: User Management */}
+          <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
+            <Route path="/admin/users" element={<UserManagementPage />} />
+          </Route>
+
+          {/* Master Product & Package Catalogue contains internal cost and margin data. */}
+          <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
             <Route path="/admin/packages" element={<SolarPackageConfiguratorPage />} />
           </Route>
 
@@ -88,7 +103,8 @@ export default function AppRoutes() {
           {/* Warehouse routes */}
           <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'WAREHOUSE']} />}>
             <Route path="/warehouse/dispatch" element={<PickListDispatchPage />} />
-            <Route path="/warehouse/inventory" element={<PickListDispatchPage defaultTab="warehouses" />} />
+            <Route path="/warehouse/inventory" element={<InventoryPage />} />
+            <Route path="/warehouse/scanner" element={<SerialScannerPage />} />
           </Route>
 
           {/* Technician routes */}
@@ -107,9 +123,16 @@ export default function AppRoutes() {
             <Route path="/finance/subsidies" element={<FinancePage defaultTab="subsidies" />} />
           </Route>
 
-          {/* Customer Portal route */}
-          <Route element={<ProtectedRoute allowedRoles={['CUSTOMER']} />}>
+          {/* Customer Portal & Dedicated Pages */}
+          <Route element={<ProtectedRoute allowedRoles={['CUSTOMER', 'ADMIN']} />}>
             <Route path="/customer-portal" element={<CustomerPortalPage />} />
+            <Route path="/customer/dashboard" element={<CustomerDashboardPage />} />
+            <Route path="/customer/quotes" element={<QuotePage />} />
+            <Route path="/customer/orders" element={<OrderTrackingPage />} />
+            <Route path="/customer/products" element={<InstalledProductsPage />} />
+            <Route path="/customer/warranties" element={<WarrantyPage />} />
+            <Route path="/customer/acceptance" element={<AcceptancePage />} />
+            <Route path="/customer/tickets/new" element={<RaiseTicketPage />} />
           </Route>
         </Route>
       </Route>

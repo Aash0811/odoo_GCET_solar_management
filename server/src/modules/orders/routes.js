@@ -43,10 +43,10 @@ router.post(
   ordersController.createOrder
 );
 
-// Payment Recording (Accountant records & verifies payments)
+// Payment Recording (Admin, Accountant, Salesman, Customer)
 router.post(
   "/:id/payments",
-  requireRole("ADMIN", "ACCOUNTANT"),
+  requireRole("ADMIN", "ACCOUNTANT", "SALESMAN", "CUSTOMER"),
   validate(recordPaymentSchema),
   ordersController.recordPayment
 );

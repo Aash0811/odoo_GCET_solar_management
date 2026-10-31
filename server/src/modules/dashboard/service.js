@@ -126,9 +126,17 @@ async function getDashboardStats(companyId, timeframe = "month") {
   const filteredCollections = filteredPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const filteredOutstanding = Math.max(0, filteredRevenue - filteredCollections);
 
-  // 5. Job Costing & Loss-Making Jobs
+  // 5. Job Costing & Comprehensive Profit & Loss
   const jobCostings = await getJobCosting(companyId);
   const lossMakingJobsCount = jobCostings.filter((j) => j.isLossMaking).length;
+  const profitableJobsCount = jobCostings.length - lossMakingJobsCount;
+  const totalBOMCost = jobCostings.reduce((sum, j) => sum + Number(j.bomCost || 0), 0);
+  const totalLaborCost = jobCostings.reduce((sum, j) => sum + Number(j.technicianCost || 0), 0);
+  const totalOtherCosts = jobCostings.reduce((sum, j) => sum + Number(j.otherCosts || 0), 0);
+  const totalJobCosts = totalBOMCost + totalLaborCost + totalOtherCosts;
+  const totalCostingRevenue = jobCostings.reduce((sum, j) => sum + Number(j.revenue || 0), 0);
+  const totalNetProfit = totalCostingRevenue - totalJobCosts;
+  const overallGrossMargin = totalCostingRevenue > 0 ? Number(((totalNetProfit / totalCostingRevenue) * 100).toFixed(1)) : 0;
 
   // 6. Open Tickets with Age
   const openTickets = await prisma.ticket.findMany({
@@ -214,7 +222,13 @@ async function getDashboardStats(companyId, timeframe = "month") {
       allTimeRevenue: Math.round(totalRevenue),
       allTimeCollections: Math.round(totalCollections),
       allTimeOutstanding: Math.round(totalOutstanding),
+      totalNetProfit: Math.round(totalNetProfit),
+      overallGrossMargin,
+      totalBOMCost: Math.round(totalBOMCost),
+      totalLaborCost: Math.round(totalLaborCost),
+      totalJobCosts: Math.round(totalJobCosts),
       lossMakingJobsCount,
+      profitableJobsCount,
       openTicketsCount: openTicketsWithAge.length,
       lowStockCount: lowStockProducts.length,
       expiringWarrantiesCount: expiringWarranties.length,

@@ -71,6 +71,29 @@ async function getOrders(companyId, filters = {}) {
             technician: { select: { id: true, name: true } },
           },
         },
+        serialNumbers: {
+          select: {
+            id: true,
+            serial: true,
+            status: true,
+            warranties: {
+              select: {
+                id: true,
+                status: true,
+                startDate: true,
+                endDate: true,
+              },
+            },
+            product: {
+              select: {
+                id: true,
+                name: true,
+                category: true,
+                warrantyYears: true,
+              },
+            },
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -289,6 +312,16 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
   const paymentCount = await prisma.payment.count({ where: { companyId } });
   const receiptNumber = `REC-${new Date().getFullYear()}-${String(paymentCount + 1).padStart(4, "0")}`;
 
+  const isDummy = paymentData.method === 'DUMMY';
+  const transactionRef =
+    paymentData.transactionRef ||
+    (isDummy
+      ? `DUMMY-PAY-${Date.now().toString().slice(-8)}`
+      : `TXN-${Date.now().toString().slice(-8)}`);
+  const notes =
+    paymentData.notes ||
+    (isDummy ? 'Instant Dummy Payment (Simulation Mode)' : null);
+
   return await prisma.$transaction(async (tx) => {
     // 1. Create Payment record
     const payment = await tx.payment.create({
@@ -297,8 +330,8 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
         orderId,
         amount: paymentAmount,
         method: paymentData.method,
-        transactionRef: paymentData.transactionRef || `TXN-${Date.now().toString().slice(-8)}`,
-        notes: paymentData.notes || null,
+        transactionRef,
+        notes,
         receiptNumber,
         status: "COMPLETED",
         isVerified: true,
@@ -472,6 +505,90 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
         confirmedKw: order.capacityKw,
       },
     });
+
+    // Automation 2.1: Automatically generate Service & Hardware Warranties according to Installation Date
+    const quoteLines = order.quote?.lines || [];
+    const warrantiesCreated = [];
+
+    for (const line of quoteLines) {
+      if (!line.productId) continue;
+      const product = line.product || (await tx.product.findUnique({ where: { id: line.productId } }));
+      if (!product || !product.isSerialTracked) continue;
+
+      const qty = Math.max(1, Math.round(Number(line.quantity || 1)));
+      const warrantyYears = product.warrantyYears || 2;
+      const startDate = scheduledDate;
+      const endDate = new Date(startDate.getTime() + warrantyYears * 365 * 86400000);
+
+      // Check existing serials for this order and product
+      let assignedSerials = await tx.serialNumber.findMany({
+        where: { orderId: order.id, productId: product.id },
+      });
+
+      // If fewer serials assigned than required, allocate from available stock or auto-reserve sequential serials
+      if (assignedSerials.length < qty) {
+        const needed = qty - assignedSerials.length;
+        const availableStockSerials = await tx.serialNumber.findMany({
+          where: {
+            companyId,
+            productId: product.id,
+            orderId: null,
+            status: "IN_STOCK",
+          },
+          take: needed,
+        });
+
+        for (const avail of availableStockSerials) {
+          const updated = await tx.serialNumber.update({
+            where: { id: avail.id },
+            data: {
+              orderId: order.id,
+              customerId: order.customerId,
+              status: "RESERVED",
+            },
+          });
+          assignedSerials.push(updated);
+        }
+
+        const stillNeeded = qty - assignedSerials.length;
+        for (let i = 0; i < stillNeeded; i++) {
+          const seq = Date.now().toString().slice(-6) + Math.floor(Math.random() * 1000).toString().padStart(3, "0");
+          const autoSerial = `${product.sku}-${seq}`;
+          const created = await tx.serialNumber.create({
+            data: {
+              companyId,
+              productId: product.id,
+              orderId: order.id,
+              customerId: order.customerId,
+              serial: autoSerial,
+              status: "RESERVED",
+            },
+          });
+          assignedSerials.push(created);
+        }
+      }
+
+      // Generate or update active service warranty starting on the installation date
+      for (const sn of assignedSerials) {
+        const warranty = await tx.warranty.upsert({
+          where: { serialNumberId: sn.id },
+          update: {
+            startDate,
+            endDate,
+            status: "ACTIVE",
+          },
+          create: {
+            companyId,
+            customerId: order.customerId,
+            serialNumberId: sn.id,
+            status: "ACTIVE",
+            startDate,
+            endDate,
+          },
+        });
+        warrantiesCreated.push(warranty);
+      }
+    }
 
     // Automation 3: Automatically create initial Project/Job-costing record
     const bomCost = (order.quote?.lines || []).reduce(

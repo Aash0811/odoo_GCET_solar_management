@@ -20,33 +20,38 @@ const upload = multer({
 
 async function uploadToCloudinary(buffer, folder = "solar_management", filename = null) {
   if (env.cloudinaryConfigured) {
-    return new Promise((resolve, reject) => {
-      const uploadOptions = {
-        folder,
-        resource_type: "auto",
-      };
-      if (filename) {
-        uploadOptions.public_id = filename;
-      }
+    try {
+      const uploadResult = await new Promise((resolve, reject) => {
+        const uploadOptions = {
+          folder,
+          resource_type: "auto",
+        };
+        if (filename) {
+          uploadOptions.public_id = filename;
+        }
 
-      const stream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
-        if (error) return reject(error);
-        resolve({
-          url: result.secure_url,
-          publicId: result.public_id,
+        const stream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
+          if (error) return reject(error);
+          resolve({
+            url: result.secure_url,
+            publicId: result.public_id,
+          });
         });
-      });
 
-      stream.end(buffer);
-    });
+        stream.end(buffer);
+      });
+      return uploadResult;
+    } catch (err) {
+      console.warn("Cloudinary upload failed, using graceful local base64 fallback:", err.message);
+    }
   }
 
-  // Graceful local fallback for demo / hackathon environments where Cloudinary keys are empty
+  // Graceful local fallback for demo / hackathon / offline environments
   const base64Data = buffer.toString("base64");
   const dataUrl = `data:image/jpeg;base64,${base64Data}`;
   return {
     url: dataUrl,
-    publicId: filename || `mock_${Date.now()}`,
+    publicId: filename || `local_${Date.now()}`,
   };
 }
 

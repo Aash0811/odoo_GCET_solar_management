@@ -11,6 +11,10 @@ router.use(authenticate);
 router.use(companyScope);
 
 router.get("/pick-lists", requireRole("ADMIN", "WAREHOUSE", "SALESMAN"), dispatchController.listPickLists);
+router.get("/lookup-barcode", requireRole("ADMIN", "WAREHOUSE", "TECHNICIAN", "SALESMAN", "SUPPORT"), dispatchController.lookupBarcode);
+router.get("/item-barcodes", requireRole("ADMIN", "WAREHOUSE", "TECHNICIAN", "SALESMAN", "SUPPORT"), dispatchController.getItemBarcodes);
+router.post("/seed-unique-codes", requireRole("ADMIN", "WAREHOUSE"), dispatchController.seedUniqueCodes);
+router.post("/register-serial", requireRole("ADMIN", "WAREHOUSE"), dispatchController.registerSerial);
 router.get("/pick-lists/:id", requireRole("ADMIN", "WAREHOUSE", "SALESMAN"), dispatchController.getPickList);
 router.patch("/pick-lists/:id/warehouse", requireRole("ADMIN", "WAREHOUSE"), dispatchController.assignWarehouse);
 router.post("/pick-lists/:id/pick-item", requireRole("ADMIN", "WAREHOUSE"), dispatchController.pickItem);

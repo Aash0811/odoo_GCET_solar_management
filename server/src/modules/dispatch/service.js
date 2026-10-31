@@ -481,31 +481,34 @@ async function validateDelivery(companyId, orderId, deliveryData = {}, actorId, 
       },
     });
 
-    // 5. Business Rule 6: Auto-create Warranty per serial in the same transaction
+    // 5. Business Rule 6: Auto-create/sync Warranty per serial according to Installation Date
+    const installJob = await tx.installationJob.findFirst({
+      where: { orderId: order.id },
+    });
+    const startDate = installJob?.completedAt || installJob?.scheduledAt || deliveryDate;
+
     const warrantiesCreated = [];
     for (const sn of order.serialNumbers) {
       const warrantyYears = sn.product?.warrantyYears || 2;
-      const startDate = deliveryDate;
       const endDate = new Date(startDate.getTime() + warrantyYears * 365 * 86400000);
 
-      // Check if warranty already exists
-      const existingWarranty = await tx.warranty.findUnique({
+      const warranty = await tx.warranty.upsert({
         where: { serialNumberId: sn.id },
+        update: {
+          startDate,
+          endDate,
+          status: "ACTIVE",
+        },
+        create: {
+          companyId,
+          customerId: order.customerId,
+          serialNumberId: sn.id,
+          status: "ACTIVE",
+          startDate,
+          endDate,
+        },
       });
-
-      if (!existingWarranty) {
-        const warranty = await tx.warranty.create({
-          data: {
-            companyId,
-            customerId: order.customerId,
-            serialNumberId: sn.id,
-            status: "ACTIVE",
-            startDate,
-            endDate,
-          },
-        });
-        warrantiesCreated.push(warranty);
-      }
+      warrantiesCreated.push(warranty);
     }
 
     // 6. Deduct warehouse stock, product stock, and record StockMoves
@@ -613,6 +616,330 @@ async function validateDelivery(companyId, orderId, deliveryData = {}, actorId, 
   });
 }
 
+/**
+ * Universal Barcode / Serial Lookup
+ * Scans serial numbers or product SKUs and retrieves real-time equipment status,
+ * customer assignment, installation warranty, and warehouse inventory.
+ */
+async function lookupBarcode(companyId, code) {
+  if (!code || !code.trim()) {
+    const error = new Error("Barcode / serial code is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const cleanCode = code.trim();
+
+  // 1. Try finding by SerialNumber
+  const serialRecord = await prisma.serialNumber.findFirst({
+    where: {
+      companyId,
+      serial: { equals: cleanCode, mode: "insensitive" },
+    },
+    include: {
+      product: {
+        select: {
+          id: true,
+          sku: true,
+          name: true,
+          category: true,
+          unit: true,
+          warrantyYears: true,
+          salePrice: true,
+          productType: true,
+        },
+      },
+      order: {
+        select: {
+          id: true,
+          orderNumber: true,
+          capacityKw: true,
+          status: true,
+          customer: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              city: true,
+              address: true,
+            },
+          },
+        },
+      },
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          city: true,
+        },
+      },
+      warranties: {
+        select: {
+          id: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+        },
+        take: 1,
+      },
+    },
+  });
+
+  if (serialRecord) {
+    const warranty = serialRecord.warranties?.[0] || null;
+    return {
+      type: "SERIAL",
+      found: true,
+      serial: serialRecord.serial,
+      status: serialRecord.status,
+      scannedAt: serialRecord.scannedAt,
+      deliveredAt: serialRecord.deliveredAt,
+      installedAt: serialRecord.installedAt,
+      product: serialRecord.product,
+      order: serialRecord.order,
+      customer: serialRecord.customer,
+      warranty,
+    };
+  }
+
+  // 2. Try finding by Product SKU or ID
+  const productRecord = await prisma.product.findFirst({
+    where: {
+      companyId,
+      OR: [
+        { sku: { equals: cleanCode, mode: "insensitive" } },
+        { id: cleanCode },
+      ],
+    },
+    include: {
+      warehouseStocks: {
+        include: {
+          warehouse: {
+            select: { id: true, name: true, code: true, city: true, zone: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (productRecord) {
+    return {
+      type: "PRODUCT_SKU",
+      found: true,
+      sku: productRecord.sku,
+      product: {
+        id: productRecord.id,
+        name: productRecord.name,
+        sku: productRecord.sku,
+        category: productRecord.category,
+        unit: productRecord.unit,
+        isSerialTracked: productRecord.isSerialTracked,
+        salePrice: productRecord.salePrice,
+        costPrice: productRecord.costPrice,
+        stockQty: productRecord.stockQty,
+        warrantyYears: productRecord.warrantyYears,
+      },
+      warehouseStocks: productRecord.warehouseStocks.map((ws) => ({
+        warehouseId: ws.warehouseId,
+        warehouseName: ws.warehouse.name,
+        city: ws.warehouse.city,
+        zone: ws.warehouse.zone,
+        quantity: Number(ws.quantity),
+      })),
+    };
+  }
+
+  return {
+    type: "UNKNOWN",
+    found: false,
+    code: cleanCode,
+    message: `No active serial unit or product SKU matching '${cleanCode}' found in company database.`,
+  };
+}
+
+/**
+ * Get all product & equipment items with their unique barcodes and serial numbers
+ */
+async function getItemBarcodes(companyId, search = "") {
+  const where = { companyId, isActive: true };
+  if (search && search.trim()) {
+    const s = search.trim();
+    where.OR = [
+      { name: { contains: s, mode: "insensitive" } },
+      { sku: { contains: s, mode: "insensitive" } },
+      { category: { contains: s, mode: "insensitive" } },
+    ];
+  }
+
+  const products = await prisma.product.findMany({
+    where,
+    select: {
+      id: true,
+      sku: true,
+      name: true,
+      category: true,
+      unit: true,
+      isSerialTracked: true,
+      stockQty: true,
+      costPrice: true,
+      salePrice: true,
+      serialNumbers: {
+        where: { status: "IN_STOCK" },
+        select: {
+          id: true,
+          serial: true,
+          status: true,
+          scannedAt: true,
+        },
+        take: 50,
+      },
+      _count: {
+        select: {
+          serialNumbers: true,
+        },
+      },
+    },
+    orderBy: [{ category: "asc" }, { name: "asc" }],
+  });
+
+  return products.map((p) => ({
+    ...p,
+    masterBarcode: p.sku,
+    availableSerials: p.serialNumbers.map((s) => s.serial),
+    totalSerialsCount: p._count.serialNumbers,
+  }));
+}
+
+/**
+ * Generate and assign unique serial codes for any product on demand
+ */
+async function seedUniqueItemCodes(companyId, data = {}) {
+  const { productId, count = 5 } = data;
+  const currentYear = new Date().getFullYear();
+
+  let products = [];
+  if (productId) {
+    const single = await prisma.product.findFirst({
+      where: { id: productId, companyId, isSerialTracked: true },
+      include: { serialNumbers: true },
+    });
+    if (single) products = [single];
+  } else {
+    products = await prisma.product.findMany({
+      where: { companyId, isSerialTracked: true },
+      include: { serialNumbers: true },
+    });
+  }
+
+  let createdCount = 0;
+  for (const prod of products) {
+    const existing = new Set(prod.serialNumbers.map((s) => s.serial));
+    const cleanSku = prod.sku.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    const batch = [];
+    let counter = 1;
+    while (batch.length < Number(count)) {
+      const candidate = `SN-${cleanSku}-${currentYear}-${String(counter).padStart(4, "0")}`;
+      if (!existing.has(candidate)) {
+        batch.push({
+          companyId,
+          productId: prod.id,
+          serial: candidate,
+          status: "IN_STOCK",
+        });
+        existing.add(candidate);
+      }
+      counter++;
+    }
+
+    if (batch.length > 0) {
+      await prisma.serialNumber.createMany({
+        data: batch,
+        skipDuplicates: true,
+      });
+      createdCount += batch.length;
+    }
+  }
+
+  return { createdCount };
+}
+
+/**
+ * Register a custom barcode / serial number directly to a product in the warehouse inventory
+ */
+async function registerCustomSerial(companyId, { productId, serial }) {
+  if (!serial || !serial.trim()) {
+    const error = new Error("Serial number text is required.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const cleanSerial = serial.trim();
+
+  // If productId provided, verify it; otherwise match prefix or pick first serial-tracked product
+  let targetProduct = null;
+  if (productId) {
+    targetProduct = await prisma.product.findFirst({
+      where: { id: productId, companyId },
+    });
+  }
+
+  if (!targetProduct) {
+    // Try matching prefix against SKU
+    const allProducts = await prisma.product.findMany({
+      where: { companyId, isSerialTracked: true },
+    });
+    for (const p of allProducts) {
+      const cleanSku = p.sku.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      if (cleanSerial.toUpperCase().includes(cleanSku) || cleanSerial.toUpperCase().includes(p.sku.toUpperCase())) {
+        targetProduct = p;
+        break;
+      }
+    }
+    if (!targetProduct && allProducts.length > 0) {
+      targetProduct = allProducts[0];
+    }
+  }
+
+  if (!targetProduct) {
+    const error = new Error("No serial-tracked product found in company catalog.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Check if serial already exists
+  const existing = await prisma.serialNumber.findFirst({
+    where: { companyId, serial: cleanSerial },
+    include: { product: true },
+  });
+
+  if (existing) {
+    return {
+      isNew: false,
+      serial: existing.serial,
+      status: existing.status,
+      product: existing.product,
+    };
+  }
+
+  const created = await prisma.serialNumber.create({
+    data: {
+      companyId,
+      productId: targetProduct.id,
+      serial: cleanSerial,
+      status: "IN_STOCK",
+    },
+    include: { product: true },
+  });
+
+  return {
+    isNew: true,
+    serial: created.serial,
+    status: created.status,
+    product: created.product,
+  };
+}
+
 module.exports = {
   getPickLists,
   getPickListById,
@@ -620,4 +947,8 @@ module.exports = {
   pickItem,
   assignWarehouseToPickList,
   validateDelivery,
+  lookupBarcode,
+  getItemBarcodes,
+  seedUniqueItemCodes,
+  registerCustomSerial,
 };

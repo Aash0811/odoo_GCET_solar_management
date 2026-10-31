@@ -28,6 +28,9 @@ import {
   Sliders,
   Globe,
   Building2,
+  Truck,
+  Users,
+  QrCode,
 } from 'lucide-react';
 
 const TOUR_STEPS = [
@@ -97,20 +100,28 @@ export default function DashboardLayout() {
   const [tourModalOpen, setTourModalOpen] = useState(false);
 
   const navItems = [
-    { label: 'Admin Dashboard', path: '/admin/dashboard', icon: LayoutDashboard, roles: ['ADMIN'] },
-    { label: 'Products & Packages', path: '/admin/packages', icon: Sliders, roles: ['ADMIN', 'SALESMAN', 'TECHNICIAN', 'WAREHOUSE', 'SUPPORT'] },
+    { label: 'Executive Dashboard (P&L)', path: '/admin/dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'ACCOUNTANT'] },
+    { label: 'User Management', path: '/admin/users', icon: Users, roles: ['ADMIN'] },
+    { label: 'Products & Packages', path: '/admin/packages', icon: Sliders, roles: ['ADMIN'] },
     { label: 'Lead Board (Kanban)', path: '/sales/leads', icon: Kanban, roles: ['ADMIN', 'SALESMAN'] },
     { label: 'Site Surveys', path: '/operations/surveys', icon: Compass, roles: ['ADMIN', 'SALESMAN', 'TECHNICIAN'] },
     { label: 'Quote Builder', path: '/sales/quotes', icon: FileSpreadsheet, roles: ['SALESMAN'] },
     { label: 'Orders & Payments', path: '/sales/orders', icon: Receipt, roles: ['ADMIN', 'SALESMAN', 'ACCOUNTANT'] },
     { label: 'Warehouse & Dispatch', path: '/warehouse/dispatch', icon: Boxes, roles: ['ADMIN', 'WAREHOUSE'] },
     { label: 'Multi-Zone Stock', path: '/warehouse/inventory', icon: Building2, roles: ['ADMIN', 'WAREHOUSE'] },
+    { label: 'Barcode & QR Scanner', path: '/warehouse/scanner', icon: QrCode, roles: ['ADMIN', 'WAREHOUSE', 'TECHNICIAN'] },
     { label: 'Installation Jobs', path: '/technician/jobs', icon: Wrench, roles: ['ADMIN', 'TECHNICIAN'] },
     { label: 'Service Desk & Tickets', path: '/support/tickets', icon: HeadphonesIcon, roles: ['ADMIN', 'SUPPORT'] },
     { label: 'Warranty Lookup', path: '/warranty/lookup', icon: ShieldCheck, roles: ['ADMIN', 'SUPPORT', 'SALESMAN'] },
     { label: 'Job Costing & Finance', path: '/finance/costing', icon: Coins, roles: ['ADMIN', 'ACCOUNTANT'] },
     { label: 'Subsidy Tracker', path: '/finance/subsidies', icon: BadgePercent, roles: ['ADMIN', 'SALESMAN', 'SUPPORT'] },
     { label: 'Customer Portal', path: '/customer-portal', icon: UserCheck, roles: ['CUSTOMER'] },
+    { label: 'My Solar Quotes', path: '/customer/quotes', icon: FileSpreadsheet, roles: ['CUSTOMER'] },
+    { label: 'Track Order & Delivery', path: '/customer/orders', icon: Truck, roles: ['CUSTOMER'] },
+    { label: 'Installed Equipment', path: '/customer/products', icon: Boxes, roles: ['CUSTOMER'] },
+    { label: 'Active Warranties', path: '/customer/warranties', icon: ShieldCheck, roles: ['CUSTOMER'] },
+    { label: 'Handover Acceptance', path: '/customer/acceptance', icon: CheckCircle2, roles: ['CUSTOMER'] },
+    { label: 'Raise Service Ticket', path: '/customer/tickets/new', icon: HeadphonesIcon, roles: ['CUSTOMER'] },
   ];
 
   const visibleNav = navItems.filter((item) => item.roles.includes(role));
@@ -121,7 +132,7 @@ export default function DashboardLayout() {
     else if (newRole === 'TECHNICIAN') navigate('/technician/jobs');
     else if (newRole === 'WAREHOUSE') navigate('/warehouse/dispatch');
     else if (newRole === 'SUPPORT') navigate('/support/tickets');
-    else if (newRole === 'ACCOUNTANT') navigate('/sales/orders');
+    else if (newRole === 'ACCOUNTANT') navigate('/admin/dashboard');
     else if (newRole === 'SALESMAN') navigate('/sales/leads');
     else navigate('/admin/dashboard');
   };

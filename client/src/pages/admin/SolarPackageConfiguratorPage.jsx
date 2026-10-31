@@ -88,9 +88,9 @@ const emptyPackageForm = () => ({
   name: '',
   description: '',
   type: 'ON_GRID',
-  minCapacityKw: 1,
-  maxCapacityKw: 10,
-  defaultCapacityKw: 3,
+  minCapacityKw: '',
+  maxCapacityKw: '',
+  defaultCapacityKw: '',
   basePrice: '',
   gstRate: 12,
   bomLines: [],
@@ -130,6 +130,17 @@ export default function SolarPackageConfiguratorPage() {
   const [products, setProducts]             = useState([]);
   const [toast, setToast]                   = useState({ msg: '', type: 'success' });
 
+  // Dynamic capacity supply limits state (Admin controls)
+  const [capacitySettings, setCapacitySettings] = useState(null);
+  const [typeCapacityLimits, setTypeCapacityLimits] = useState({
+    ON_GRID: { minKw: '', maxKw: '', defaultKw: '' },
+    OFF_GRID: { minKw: '', maxKw: '', defaultKw: '' },
+    HYBRID: { minKw: '', maxKw: '', defaultKw: '' },
+    COMMERCIAL: { minKw: '', maxKw: '', defaultKw: '' },
+  });
+  const [packageCapacityRows, setPackageCapacityRows] = useState({});
+  const [savingCapacity, setSavingCapacity] = useState(false);
+
   // Package state
   const [filterType, setFilterType]         = useState('ALL');
   const [expandedCard, setExpandedCard]     = useState(null);
@@ -155,12 +166,43 @@ export default function SolarPackageConfiguratorPage() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [tRes, pRes] = await Promise.all([
+      const [tRes, pRes, capRes] = await Promise.all([
         inventoryApi.getTemplates(),
         inventoryApi.getProducts(),
+        inventoryApi.getCapacitySettings().catch(() => ({ data: { data: null } })),
       ]);
-      setTemplates(tRes.data?.data || []);
+      const loadedTemplates = tRes.data?.data || [];
+      setTemplates(loadedTemplates);
       setProducts(pRes.data?.data || []);
+
+      const capData = capRes.data?.data;
+      if (capData) {
+        setCapacitySettings(capData);
+        if (capData.byType) {
+          const newTypeLimits = {};
+          ['ON_GRID', 'OFF_GRID', 'HYBRID', 'COMMERCIAL'].forEach((t) => {
+            if (capData.byType[t]) {
+              newTypeLimits[t] = {
+                minKw: capData.byType[t].minKw ?? '',
+                maxKw: capData.byType[t].maxKw ?? '',
+                defaultKw: capData.byType[t].defaultKw ?? '',
+              };
+            }
+          });
+          setTypeCapacityLimits((prev) => ({ ...prev, ...newTypeLimits }));
+        }
+      }
+
+      // Initialize package capacity rows
+      const pkgRows = {};
+      loadedTemplates.forEach((t) => {
+        pkgRows[t.id] = {
+          minCapacityKw: t.minCapacityKw ?? '',
+          maxCapacityKw: t.maxCapacityKw ?? '',
+          defaultCapacityKw: t.defaultCapacityKw ?? '',
+        };
+      });
+      setPackageCapacityRows(pkgRows);
     } catch (err) {
       console.error('Failed to load configurator data:', err);
       showToast('Failed to load data. Please refresh.', 'error');
@@ -205,6 +247,116 @@ export default function SolarPackageConfiguratorPage() {
   };
 
   // ══════════════════════════════════════════════════════════
+  // DYNAMIC CAPACITY LIMITS (ADMIN SUPPLY CONTROL)
+  // ══════════════════════════════════════════════════════════
+  const handleTypeLimitChange = (type, field, val) => {
+    setTypeCapacityLimits((prev) => ({
+      ...prev,
+      [type]: {
+        ...prev[type],
+        [field]: val === '' ? '' : Number(val),
+      },
+    }));
+  };
+
+  const handleSaveTypeCapacity = async (type) => {
+    try {
+      setSavingCapacity(true);
+      const conf = typeCapacityLimits[type];
+      if (!conf) return;
+      if (Number(conf.minKw) > Number(conf.maxKw)) {
+        showToast(`Minimum kW (${conf.minKw}) cannot exceed Maximum kW (${conf.maxKw})!`, 'error');
+        return;
+      }
+
+      await inventoryApi.updateCapacitySettings({
+        typeLimits: [
+          {
+            type,
+            minCapacityKw: Number(conf.minKw),
+            maxCapacityKw: Number(conf.maxKw),
+            defaultCapacityKw: Number(conf.defaultKw),
+          },
+        ],
+      });
+
+      showToast(`✅ Fixed supply limits for all ${type.replace('_', '-')} systems (${conf.minKw} kW – ${conf.maxKw} kW)!`);
+      await loadData();
+    } catch (err) {
+      showToast('❌ Failed to update supply capacity: ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setSavingCapacity(false);
+    }
+  };
+
+  const handlePackageLimitChange = (pkgId, field, val) => {
+    setPackageCapacityRows((prev) => ({
+      ...prev,
+      [pkgId]: {
+        ...prev[pkgId],
+        [field]: val === '' ? '' : Number(val),
+      },
+    }));
+  };
+
+  const handleSavePackageCapacity = async (pkgId) => {
+    try {
+      setSavingCapacity(true);
+      const conf = packageCapacityRows[pkgId];
+      if (!conf) return;
+      if (Number(conf.minCapacityKw) > Number(conf.maxCapacityKw)) {
+        showToast('Minimum kW cannot exceed Maximum kW!', 'error');
+        return;
+      }
+
+      await inventoryApi.updateCapacitySettings({
+        packageLimits: [
+          {
+            id: pkgId,
+            minCapacityKw: Number(conf.minCapacityKw),
+            maxCapacityKw: Number(conf.maxCapacityKw),
+            defaultCapacityKw: Number(conf.defaultCapacityKw),
+          },
+        ],
+      });
+
+      showToast('✅ Package supply capacity updated!');
+      await loadData();
+    } catch (err) {
+      showToast('❌ Failed to update package capacity: ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setSavingCapacity(false);
+    }
+  };
+
+  const handleBatchSaveAllPackageCapacities = async () => {
+    try {
+      setSavingCapacity(true);
+      const packageLimits = Object.entries(packageCapacityRows).map(([id, conf]) => ({
+        id,
+        minCapacityKw: Number(conf.minCapacityKw),
+        maxCapacityKw: Number(conf.maxCapacityKw),
+        defaultCapacityKw: Number(conf.defaultCapacityKw),
+      }));
+
+      for (const pl of packageLimits) {
+        if (pl.minCapacityKw > pl.maxCapacityKw) {
+          showToast(`Invalid limits: Min kW cannot exceed Max kW.`, 'error');
+          return;
+        }
+      }
+
+      await inventoryApi.updateCapacitySettings({ packageLimits });
+      showToast('✅ All package supply capacity limits saved and enforced across system!');
+      await loadData();
+    } catch (err) {
+      showToast('❌ Failed to batch save capacities: ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setSavingCapacity(false);
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════
   // PACKAGE EDITOR
   // ══════════════════════════════════════════════════════════
   const openCreatePackage = () => {
@@ -229,9 +381,9 @@ export default function SolarPackageConfiguratorPage() {
         name: template.name,
         description: template.description || '',
         type: template.type,
-        minCapacityKw: Number(template.minCapacityKw || 1),
-        maxCapacityKw: Number(template.maxCapacityKw || 10),
-        defaultCapacityKw: Number(template.defaultCapacityKw || 3),
+        minCapacityKw: template.minCapacityKw,
+        maxCapacityKw: template.maxCapacityKw,
+        defaultCapacityKw: template.defaultCapacityKw,
         basePrice: Number(template.basePrice || 0),
         gstRate: Number(template.gstRate || 12),
         bomLines,
@@ -257,9 +409,9 @@ export default function SolarPackageConfiguratorPage() {
         name: `Custom - ${template.name}`,
         description: `Customized proposal package tailored by ${user?.name || 'Sales Representative'}.`,
         type: template.type,
-        minCapacityKw: Number(template.minCapacityKw || 1),
-        maxCapacityKw: Number(template.maxCapacityKw || 10),
-        defaultCapacityKw: Number(template.defaultCapacityKw || 3),
+        minCapacityKw: template.minCapacityKw,
+        maxCapacityKw: template.maxCapacityKw,
+        defaultCapacityKw: template.defaultCapacityKw,
         basePrice: Number(template.basePrice || 0),
         gstRate: Number(template.gstRate || 12),
         bomLines,
@@ -315,6 +467,20 @@ export default function SolarPackageConfiguratorPage() {
     const { data, mode, templateId } = packageEditor;
 
     try {
+      const minCapacityKw = Number(data.minCapacityKw);
+      const maxCapacityKw = Number(data.maxCapacityKw);
+      const defaultCapacityKw = Number(data.defaultCapacityKw);
+      if (
+        !Number.isFinite(minCapacityKw) ||
+        !Number.isFinite(maxCapacityKw) ||
+        !Number.isFinite(defaultCapacityKw) ||
+        minCapacityKw <= 0 ||
+        maxCapacityKw < minCapacityKw ||
+        defaultCapacityKw < minCapacityKw ||
+        defaultCapacityKw > maxCapacityKw
+      ) {
+        throw new Error('Set valid positive capacity limits: minimum <= default <= maximum.');
+      }
       const bomLines = data.bomLines
         .filter(l => l.productId)
         .map((l, i) => ({
@@ -329,9 +495,9 @@ export default function SolarPackageConfiguratorPage() {
         name: data.name.trim(),
         description: data.description.trim() || null,
         type: data.type,
-        minCapacityKw: Number(data.minCapacityKw),
-        maxCapacityKw: Number(data.maxCapacityKw),
-        defaultCapacityKw: Number(data.defaultCapacityKw),
+        minCapacityKw,
+        maxCapacityKw,
+        defaultCapacityKw,
         basePrice: Number(data.basePrice),
         gstRate: Number(data.gstRate),
         bomLines,
@@ -360,6 +526,20 @@ export default function SolarPackageConfiguratorPage() {
     const { data } = packageEditor;
 
     try {
+      const minCapacityKw = Number(data.minCapacityKw);
+      const maxCapacityKw = Number(data.maxCapacityKw);
+      const defaultCapacityKw = Number(data.defaultCapacityKw);
+      if (
+        !Number.isFinite(minCapacityKw) ||
+        !Number.isFinite(maxCapacityKw) ||
+        !Number.isFinite(defaultCapacityKw) ||
+        minCapacityKw <= 0 ||
+        maxCapacityKw < minCapacityKw ||
+        defaultCapacityKw < minCapacityKw ||
+        defaultCapacityKw > maxCapacityKw
+      ) {
+        throw new Error('Set valid positive capacity limits: minimum <= default <= maximum.');
+      }
       const bomLines = data.bomLines
         .filter(l => l.productId)
         .map((l, i) => ({
@@ -374,9 +554,9 @@ export default function SolarPackageConfiguratorPage() {
         name: data.name.trim(),
         description: data.description.trim() || null,
         type: data.type,
-        minCapacityKw: Number(data.minCapacityKw),
-        maxCapacityKw: Number(data.maxCapacityKw),
-        defaultCapacityKw: Number(data.defaultCapacityKw),
+        minCapacityKw,
+        maxCapacityKw,
+        defaultCapacityKw,
         basePrice: Number(data.basePrice),
         gstRate: Number(data.gstRate),
         bomLines,
@@ -388,7 +568,7 @@ export default function SolarPackageConfiguratorPage() {
       loadData();
       const created = res.data?.data;
       setTimeout(() => {
-        navigate(`/sales/quotes?templateId=${created?.id || ''}&capacity=${data.defaultCapacityKw || 3}`);
+        navigate(`/sales/quotes?templateId=${created?.id || ''}&capacity=${data.defaultCapacityKw}`);
       }, 500);
     } catch (err) {
       showToast('❌ ' + (err.response?.data?.message || err.message), 'error');
@@ -539,6 +719,12 @@ export default function SolarPackageConfiguratorPage() {
             {isAdmin ? (
               <>
                 <button
+                  onClick={() => setActiveTab('capacity_limits')}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-500 to-[#f09e38] hover:opacity-95 text-[#241621] rounded-xl text-xs font-black shadow-lg transition cursor-pointer"
+                >
+                  <Sliders className="w-4 h-4" /> Dynamic Capacity Limits
+                </button>
+                <button
                   onClick={openCreatePackage}
                   className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#f09e38] to-[#d4821a] hover:opacity-95 text-[#241621] rounded-xl text-xs font-black shadow-lg transition cursor-pointer"
                 >
@@ -589,6 +775,7 @@ export default function SolarPackageConfiguratorPage() {
         {[
           { key: 'packages', icon: <Layers className="w-4 h-4" />, label: `Solar Packages & BOM (${templates.length})` },
           { key: 'components', icon: <DollarSign className="w-4 h-4" />, label: `Component Catalog (${products.length})` },
+          { key: 'capacity_limits', icon: <Sliders className="w-4 h-4 text-[#f09e38]" />, label: '⚡ Dynamic Capacity Limits (Admin Supply Control)' },
         ].map(tab => (
           <button
             key={tab.key}
@@ -1005,6 +1192,344 @@ export default function SolarPackageConfiguratorPage() {
                 }}
                 pageSizeOptions={[5, 10, 20, 50]}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════
+          TAB: DYNAMIC CAPACITY LIMITS (ADMIN SUPPLY CONTROL)
+      ══════════════════════════════════════════════════════ */}
+      {activeTab === 'capacity_limits' && (
+        <div className="space-y-6">
+          {/* Top Supply Control Alert & Policy Banner */}
+          <div className="p-5 rounded-3xl bg-gradient-to-r from-[#241621] via-[#352031] to-[#241621] text-white border border-[#EBDCE7]/20 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#f09e38] animate-ping" />
+                <h2 className="text-base font-black tracking-tight flex items-center gap-2">
+                  <Sliders className="w-5 h-5 text-[#f09e38]" /> Dynamic System Capacity &amp; Supply Limits
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-[#f09e38]/20 border border-[#f09e38]/40 text-[#f09e38] text-[10px] font-black uppercase tracking-wider">
+                  Admin Authority
+                </span>
+              </div>
+              <p className="text-xs text-[#dabed3] max-w-2xl leading-relaxed">
+                Fix the permissible minimum kW and maximum kW solar capacity SunPower Solutions can supply and quote.
+                These bounds dynamically configure the salesman quote sliders, preset chips, and quotation validation rules across the system.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="bg-white/10 px-4 py-2.5 rounded-2xl border border-white/15 text-center">
+                <span className="text-[10px] uppercase font-bold text-[#dabed3] block">Active Supply Range</span>
+                <span className="text-lg font-black text-[#f09e38]">
+                  {capacitySettings?.overallMinKw ?? 'Not configured'}{capacitySettings?.overallMinKw != null ? ' kW' : ''} – {capacitySettings?.overallMaxKw ?? 'Not configured'}{capacitySettings?.overallMaxKw != null ? ' kW' : ''}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate('/sales/quotes')}
+                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                title="Open Quotation Studio to test salesman perspective"
+              >
+                <span>Preview in Quote Studio</span>
+                <ArrowRight className="w-3.5 h-3.5 text-[#f09e38]" />
+              </button>
+            </div>
+          </div>
+
+          {/* Section 1: Quick Solar Type Policy Cards */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-sm font-black text-[#241621] flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-[#f09e38]" /> 1. Supply Policy by Solar System Type
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Quickly set and enforce uniform Min/Max kW bounds for all packages belonging to a specific solar system technology.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              {[
+                {
+                  type: 'ON_GRID',
+                  title: 'On-Grid Solar',
+                  badge: 'Grid-Tied / PM Surya Ghar',
+                  icon: <Sun className="w-5 h-5 text-amber-500" />,
+                  desc: 'Residential net-metered systems eligible for subsidy.',
+                  color: 'border-amber-200 bg-amber-50/30',
+                },
+                {
+                  type: 'OFF_GRID',
+                  title: 'Off-Grid Solar',
+                  badge: 'Battery Storage / Remote',
+                  icon: <Battery className="w-5 h-5 text-emerald-500" />,
+                  desc: 'Standalone systems with battery bank energy storage.',
+                  color: 'border-emerald-200 bg-emerald-50/30',
+                },
+                {
+                  type: 'HYBRID',
+                  title: 'Hybrid Solar',
+                  badge: 'Grid + Emergency Backup',
+                  icon: <Zap className="w-5 h-5 text-blue-500" />,
+                  desc: 'Dual grid synchronization with lithium battery reserve.',
+                  color: 'border-blue-200 bg-blue-50/30',
+                },
+                {
+                  type: 'COMMERCIAL',
+                  title: 'Commercial / Industrial',
+                  badge: '3-Phase / High Yield',
+                  icon: <Sliders className="w-5 h-5 text-purple-500" />,
+                  desc: 'High-voltage commercial rooftops, schools & factories.',
+                  color: 'border-purple-200 bg-purple-50/30',
+                },
+              ].map((card) => {
+                const conf = typeCapacityLimits[card.type] || { minKw: '', maxKw: '', defaultKw: '' };
+                const count = templates.filter((t) => t.type === card.type).length;
+
+                return (
+                  <div
+                    key={card.type}
+                    className={`rounded-3xl border ${card.color} p-5 bg-white shadow-sm flex flex-col justify-between space-y-4`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <div className="w-9 h-9 rounded-xl bg-white border border-[#EBDCE7] flex items-center justify-center shadow-xs">
+                          {card.icon}
+                        </div>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          {count} {count === 1 ? 'Package' : 'Packages'}
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-black text-[#241621] mt-2.5">{card.title}</h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">{card.desc}</p>
+                    </div>
+
+                    <div className="space-y-3 bg-[#FAF6F9] p-3.5 rounded-2xl border border-[#EBDCE7]/80">
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block uppercase">Min Supply (kW)</label>
+                          <div className="flex items-center gap-1 mt-1">
+                            <input
+                              type="number"
+                              min="0.5"
+                              max="100"
+                              step="0.5"
+                              value={conf.minKw}
+                              onChange={(e) => handleTypeLimitChange(card.type, 'minKw', e.target.value)}
+                              className="w-full p-1.5 rounded-lg border border-[#EBDCE7] bg-white font-black text-center text-xs text-[#241621] outline-none focus:ring-1 focus:ring-[#714b67]"
+                            />
+                            <span className="text-[10px] font-bold text-slate-400">kW</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 block uppercase">Max Supply (kW)</label>
+                          <div className="flex items-center gap-1 mt-1">
+                            <input
+                              type="number"
+                              min="1"
+                              max="500"
+                              step="1"
+                              value={conf.maxKw}
+                              onChange={(e) => handleTypeLimitChange(card.type, 'maxKw', e.target.value)}
+                              className="w-full p-1.5 rounded-lg border border-[#EBDCE7] bg-white font-black text-center text-xs text-[#241621] outline-none focus:ring-1 focus:ring-[#714b67]"
+                            />
+                            <span className="text-[10px] font-bold text-slate-400">kW</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block uppercase">Default Recommended (kW)</label>
+                        <div className="flex items-center gap-1 mt-1">
+                          <input
+                            type="number"
+                            min={conf.minKw}
+                            max={conf.maxKw}
+                            step="0.5"
+                            value={conf.defaultKw}
+                            onChange={(e) => handleTypeLimitChange(card.type, 'defaultKw', e.target.value)}
+                            className="w-full p-1.5 rounded-lg border border-[#EBDCE7] bg-white font-bold text-center text-xs text-[#714b67] outline-none focus:ring-1 focus:ring-[#714b67]"
+                          />
+                          <span className="text-[10px] font-bold text-slate-400">kW</span>
+                        </div>
+                      </div>
+
+                      {/* Visual supply span bar */}
+                      <div className="pt-1">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 mb-1">
+                          <span>Span: {conf.minKw} kW</span>
+                          <span className="text-[#714b67] font-black">{conf.maxKw} kW</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden flex">
+                          <div
+                            className="h-full bg-gradient-to-r from-amber-400 to-[#714b67] rounded-full transition-all duration-300"
+                            style={{
+                              width: `${Math.min(100, Math.max(10, ((conf.maxKw - conf.minKw) / (conf.maxKw || 1)) * 100))}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={savingCapacity}
+                      onClick={() => handleSaveTypeCapacity(card.type)}
+                      className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#714b67] to-[#855278] hover:opacity-95 text-white text-xs font-black shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Save className="w-3.5 h-3.5 text-[#f09e38]" />
+                      <span>Enforce for {card.title}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section 2: Granular Package Supply Limits Matrix */}
+          <div className="p-6 rounded-3xl bg-white border border-[#EBDCE7] shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#EBDCE7]">
+              <div>
+                <h3 className="text-sm font-black text-[#241621] flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-[#714b67]" /> 2. Granular Package Capacity Matrix
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Override and fine-tune allowable supply kW bounds on each individual package template.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={savingCapacity || templates.length === 0}
+                onClick={handleBatchSaveAllPackageCapacities}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#f09e38] to-[#d4821a] hover:opacity-95 text-[#241621] rounded-xl text-xs font-black shadow-sm transition cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" /> Batch Enforce All Packages
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-[#EBDCE7] text-[11px] font-black uppercase text-slate-500">
+                    <th className="py-2.5 px-3">Solar Package Name</th>
+                    <th className="py-2.5 px-3">Technology Type</th>
+                    <th className="py-2.5 px-3 text-center">Min Supply (kW)</th>
+                    <th className="py-2.5 px-3 text-center">Max Supply (kW)</th>
+                    <th className="py-2.5 px-3 text-center">Default (kW)</th>
+                    <th className="py-2.5 px-3">Salesman Studio Preview</th>
+                    <th className="py-2.5 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#EBDCE7]/60">
+                  {templates.map((tmpl) => {
+                    const row = packageCapacityRows[tmpl.id] || {
+                      minCapacityKw: tmpl.minCapacityKw,
+                      maxCapacityKw: tmpl.maxCapacityKw,
+                      defaultCapacityKw: tmpl.defaultCapacityKw,
+                    };
+
+                    const min = Number(row.minCapacityKw);
+                    const max = Number(row.maxCapacityKw);
+                    const isInvalid = min > max;
+
+                    // Preview preset sample
+                    const previewPresets = [
+                      min,
+                      Math.round((min + (max - min) * 0.33) * 2) / 2,
+                      Math.round((min + (max - min) * 0.66) * 2) / 2,
+                      max,
+                    ];
+
+                    return (
+                      <tr key={tmpl.id} className="hover:bg-[#FAF6F9]/60 transition">
+                        <td className="py-3 px-3">
+                          <span className="font-extrabold text-[#241621] block">{tmpl.name}</span>
+                          <span className="text-[10px] text-slate-400">ID: {tmpl.id.slice(0, 8)}...</span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                            tmpl.type === 'OFF_GRID' ? 'bg-emerald-100 text-emerald-800' :
+                            tmpl.type === 'HYBRID' ? 'bg-blue-100 text-blue-800' :
+                            tmpl.type === 'COMMERCIAL' ? 'bg-purple-100 text-purple-800' :
+                            'bg-amber-100 text-amber-800'
+                          }`}>
+                            {tmpl.type.replace('_', '-')}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <input
+                            type="number"
+                            min="0.5"
+                            max="500"
+                            step="0.5"
+                            value={row.minCapacityKw}
+                            onChange={(e) => handlePackageLimitChange(tmpl.id, 'minCapacityKw', e.target.value)}
+                            className={`w-20 p-1.5 rounded-lg border text-center font-black text-xs outline-none ${
+                              isInvalid
+                                ? 'border-rose-400 bg-rose-50 text-rose-700'
+                                : 'border-[#EBDCE7] bg-white text-[#241621] focus:ring-1 focus:ring-[#714b67]'
+                            }`}
+                          />
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <input
+                            type="number"
+                            min="1"
+                            max="1000"
+                            step="1"
+                            value={row.maxCapacityKw}
+                            onChange={(e) => handlePackageLimitChange(tmpl.id, 'maxCapacityKw', e.target.value)}
+                            className={`w-20 p-1.5 rounded-lg border text-center font-black text-xs outline-none ${
+                              isInvalid
+                                ? 'border-rose-400 bg-rose-50 text-rose-700'
+                                : 'border-[#EBDCE7] bg-white text-[#241621] focus:ring-1 focus:ring-[#714b67]'
+                            }`}
+                          />
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <input
+                            type="number"
+                            min="1"
+                            max="500"
+                            step="0.5"
+                            value={row.defaultCapacityKw}
+                            onChange={(e) => handlePackageLimitChange(tmpl.id, 'defaultCapacityKw', e.target.value)}
+                            className="w-20 p-1.5 rounded-lg border border-[#EBDCE7] bg-white font-bold text-center text-xs text-[#714b67] outline-none focus:ring-1 focus:ring-[#714b67]"
+                          />
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-1">
+                            {previewPresets.map((kw, i) => (
+                              <span
+                                key={i}
+                                className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono font-bold text-[10px]"
+                              >
+                                {kw}kW
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <button
+                            type="button"
+                            disabled={savingCapacity || isInvalid}
+                            onClick={() => handleSavePackageCapacity(tmpl.id)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#FAF6F9] hover:bg-[#714b67] text-[#714b67] hover:text-white border border-[#EBDCE7] text-xs font-bold transition cursor-pointer disabled:opacity-40"
+                          >
+                            <Save className="w-3.5 h-3.5" /> Save
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

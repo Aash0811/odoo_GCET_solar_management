@@ -12,7 +12,8 @@ const quoteLineItemSchema = z.object({
 const createQuoteSchema = z.object({
   leadId: z.string().min(1, "leadId is required"),
   packageTemplateId: z.string().min(1, "packageTemplateId is required"),
-  capacityKw: z.coerce.number().min(1, "Capacity must be at least 1 kW").max(100, "Capacity cannot exceed 100 kW"),
+  // The selected package's admin-configured bounds are enforced by the service.
+  capacityKw: z.coerce.number().positive("Capacity must be greater than 0 kW"),
   subsidyNote: z.string().optional().nullable(),
   subsidyAmount: z.coerce.number().nonnegative().optional(),
   terms: z.string().optional().nullable(),

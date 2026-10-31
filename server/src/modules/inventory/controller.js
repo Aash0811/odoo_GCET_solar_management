@@ -123,6 +123,36 @@ async function updatePackageTemplate(req, res, next) {
   }
 }
 
+async function getCapacitySettings(req, res, next) {
+  try {
+    const settings = await inventoryService.getCapacitySettings(req.companyId);
+    return res.status(200).json({
+      success: true,
+      data: settings,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateCapacitySettings(req, res, next) {
+  try {
+    const updated = await inventoryService.updateCapacitySettings(
+      req.companyId,
+      req.body,
+      req.user.id,
+      req
+    );
+    return res.status(200).json({
+      success: true,
+      message: "Solar supply capacity limits updated successfully.",
+      data: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   listProducts,
   getProduct,
@@ -132,4 +162,6 @@ module.exports = {
   getPackageTemplate,
   createPackageTemplate,
   updatePackageTemplate,
+  getCapacitySettings,
+  updateCapacitySettings,
 };

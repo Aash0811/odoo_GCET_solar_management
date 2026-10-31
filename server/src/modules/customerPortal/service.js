@@ -10,6 +10,7 @@ async function getCustomerPortalData(companyId, customerId) {
         include: {
           packageTemplate: { select: { name: true, type: true } },
           lines: { include: { product: true } },
+          photos: true,
         },
         orderBy: { createdAt: "desc" },
       },
@@ -17,7 +18,11 @@ async function getCustomerPortalData(companyId, customerId) {
         include: {
           payments: { orderBy: { receivedAt: "desc" } },
           installationJobs: {
-            include: { technician: { select: { name: true, phone: true } }, signature: true },
+            include: {
+              technician: { select: { name: true, phone: true } },
+              signature: true,
+              photos: true,
+            },
           },
         },
         orderBy: { createdAt: "desc" },
@@ -41,6 +46,10 @@ async function getCustomerPortalData(companyId, customerId) {
       },
       leads: {
         orderBy: { createdAt: "desc" },
+      },
+      serialNumbers: {
+        include: { product: true },
+        orderBy: { deliveredAt: "desc" },
       },
     },
   });
@@ -83,6 +92,7 @@ async function getCustomerPortalData(companyId, customerId) {
     leads: customer.leads,
     orders: customer.orders,
     warranties: formattedWarranties,
+    serialNumbers: customer.serialNumbers || [],
     tickets: customer.tickets,
     subsidies: customer.subsidyApplications,
   };

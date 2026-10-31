@@ -185,6 +185,22 @@ async function createQuote(companyId, data, actorId, req = null) {
 
   const capacityKw = Number(data.capacityKw);
 
+  // Business Rule: Dynamic capacity validation against Admin's fixed minimum and maximum supply limits
+  const minKw = Number(template.minCapacityKw);
+  const maxKw = Number(template.maxCapacityKw);
+  if (!Number.isFinite(minKw) || !Number.isFinite(maxKw) || minKw <= 0 || maxKw < minKw) {
+    const error = new Error("This package has no valid admin-configured capacity range.");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (capacityKw < minKw || capacityKw > maxKw) {
+    const error = new Error(
+      `Requested system capacity (${capacityKw} kW) is outside the authorized supply range for '${template.name}' (${minKw} kW to ${maxKw} kW). Admin authorization required.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
   // Business Rule 3: Quote is generated from PackageTemplate which auto-expands into BOM lines scaled by kW. Lines are editable before sending.
   let linesToCreate = [];
 

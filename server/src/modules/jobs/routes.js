@@ -16,7 +16,15 @@ router.get("/:id", requireRole("ADMIN", "TECHNICIAN", "SALESMAN", "SUPPORT", "CU
 router.get("/:id/certificate", requireRole("ADMIN", "TECHNICIAN", "SALESMAN", "SUPPORT", "CUSTOMER"), jobsController.downloadCertificate);
 
 router.patch("/:id/progress", requireRole("ADMIN", "TECHNICIAN"), validate(updateJobProgressSchema), jobsController.updateJobProgress);
-router.post("/:id/photos", requireRole("ADMIN", "TECHNICIAN"), upload.single("photo"), jobsController.uploadPhoto);
+router.post(
+  "/:id/photos",
+  requireRole("ADMIN", "TECHNICIAN"),
+  upload.fields([
+    { name: "photo", maxCount: 10 },
+    { name: "photos", maxCount: 10 },
+  ]),
+  jobsController.uploadPhoto
+);
 
 // Complete job endpoint: handles both photo uploads, signature upload, and checklist body
 router.post(

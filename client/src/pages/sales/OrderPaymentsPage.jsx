@@ -39,7 +39,7 @@ export default function OrderPaymentsPage() {
   const [reminderLoading, setReminderLoading] = useState({});
   const [actionMessage, setActionMessage] = useState('');
 
-  const isAccountant = role === 'ACCOUNTANT' || role === 'ADMIN';
+  const canRecordPayment = ['ADMIN', 'ACCOUNTANT', 'SALESMAN'].includes(role);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -58,7 +58,7 @@ export default function OrderPaymentsPage() {
 
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
-    method: 'UPI',
+    method: 'DUMMY',
     transactionRef: '',
     notes: 'Advance booking deposit',
     scheduledInstallDate: '',
@@ -87,6 +87,18 @@ export default function OrderPaymentsPage() {
       method: 'UPI',
       transactionRef: `UPI-${Date.now().toString().slice(-6)}`,
       notes: `${Math.round(percentage * 100)}% Milestone Advance payment`,
+      scheduledInstallDate: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
+    });
+  };
+
+  const handleOpenDummyPayment = (order, percentage = 0.3) => {
+    setPaymentModalOrder(order);
+    const calculatedAmount = Math.round(Number(order.totalAmount) * percentage);
+    setPaymentForm({
+      amount: calculatedAmount.toString(),
+      method: 'DUMMY',
+      transactionRef: `DUMMY-PAY-${Date.now().toString().slice(-6)}`,
+      notes: `⚡ Instant Dummy Payment (${Math.round(percentage * 100)}% Milestone Simulation)`,
       scheduledInstallDate: new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
     });
   };
@@ -267,14 +279,24 @@ export default function OrderPaymentsPage() {
                       {reminderLoading[order.id] ? 'Sending...' : 'Remind'}
                     </button>
 
-                    {/* Record Payment Action (Accountant or Admin) */}
-                    {isAccountant && (
-                      <button
-                        onClick={() => handleOpenPayment(order, isAdvanceMet ? 0.5 : 0.3)}
-                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#714B67] to-[#855278] hover:opacity-95 text-white font-black text-xs flex items-center gap-2 shadow-md shadow-[#714B67]/25 transition cursor-pointer"
-                      >
-                        <CreditCard className="w-4 h-4 text-[#f09e38]" /> Record Payment
-                      </button>
+                    {/* Record Payment Actions (Salesman, Accountant, Admin) */}
+                    {canRecordPayment && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          onClick={() => handleOpenDummyPayment(order, isAdvanceMet ? 0.5 : 0.3)}
+                          className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-[#f09e38] hover:opacity-95 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-[#f09e38]/20 transition cursor-pointer"
+                          title="Instant dummy payment simulation without bank transfer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-slate-950" /> ⚡ Instant Dummy Pay
+                        </button>
+
+                        <button
+                          onClick={() => handleOpenPayment(order, isAdvanceMet ? 0.5 : 0.3)}
+                          className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#714B67] to-[#855278] hover:opacity-95 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-[#714B67]/25 transition cursor-pointer"
+                        >
+                          <CreditCard className="w-3.5 h-3.5 text-[#f09e38]" /> Record Payment
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -401,7 +423,31 @@ export default function OrderPaymentsPage() {
                     {order.installationJobs?.[0] && (
                       <div className="flex items-center gap-1.5 text-[#241621]">
                         <Wrench className="w-4 h-4 text-[#00A09D]" />
-                        <span>Job: <strong className="font-mono text-[#714B67]">{order.installationJobs[0].jobNumber}</strong> ({order.installationJobs[0].status})</span>
+                        <span>
+                          Job: <strong className="font-mono text-[#714B67]">{order.installationJobs[0].jobNumber}</strong>{' '}
+                          ({order.installationJobs[0].status}){' '}
+                          {order.installationJobs[0].scheduledAt && (
+                            <span className="text-[10px] text-slate-500 font-normal">
+                              · Auto-Scheduled: {new Date(order.installationJobs[0].scheduledAt).toLocaleDateString('en-IN')}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    {order.installationJobs?.[0] && (
+                      <div className="flex items-center gap-1.5 text-[#241621]">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        <span>
+                          Service Warranty:{' '}
+                          <strong className="text-emerald-700 font-bold">
+                            Active from {new Date(order.installationJobs[0].scheduledAt).toLocaleDateString('en-IN')}
+                          </strong>
+                          {order.serialNumbers?.filter((s) => s.warranties?.length > 0).length > 0 && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-black">
+                              {order.serialNumbers.filter((s) => s.warranties?.length > 0).length} Items Covered
+                            </span>
+                          )}
+                        </span>
                       </div>
                     )}
                     <div className="flex items-center gap-1.5 text-[#241621]">
@@ -555,12 +601,43 @@ export default function OrderPaymentsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-extrabold text-[#241621] mb-1 block">Payment Mode</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-extrabold text-[#241621] block">Payment Mode</label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPaymentForm({
+                          ...paymentForm,
+                          method: 'DUMMY',
+                          transactionRef: `DUMMY-PAY-${Date.now().toString().slice(-6)}`,
+                          notes: 'Instant Dummy Payment (Sandbox Simulation)',
+                        })
+                      }
+                      className="text-[9.5px] font-black text-amber-700 hover:underline cursor-pointer"
+                    >
+                      ⚡ Auto-Dummy
+                    </button>
+                  </div>
                   <select
                     value={paymentForm.method}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}
+                    onChange={(e) => {
+                      const m = e.target.value;
+                      setPaymentForm({
+                        ...paymentForm,
+                        method: m,
+                        transactionRef:
+                          m === 'DUMMY'
+                            ? `DUMMY-PAY-${Date.now().toString().slice(-6)}`
+                            : paymentForm.transactionRef,
+                        notes:
+                          m === 'DUMMY'
+                            ? 'Instant Dummy Payment (Sandbox Simulation)'
+                            : paymentForm.notes,
+                      });
+                    }}
                     className="w-full p-2.5 rounded-xl border border-[#EBDCE7] bg-white font-semibold outline-none focus:ring-2 focus:ring-[#714B67]"
                   >
+                    <option value="DUMMY">⚡ Dummy Payment (Instant Simulation)</option>
                     <option value="UPI">UPI / QR Transfer</option>
                     <option value="BANK_TRANSFER">Bank Transfer / NEFT</option>
                     <option value="CASH">Cash Deposit</option>
@@ -580,14 +657,50 @@ export default function OrderPaymentsPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="font-extrabold text-[#241621] mb-1 block">Scheduled Installation Date</label>
-                <input
-                  type="date"
-                  value={paymentForm.scheduledInstallDate}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, scheduledInstallDate: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] outline-none focus:ring-2 focus:ring-[#714B67]"
-                />
+              {paymentForm.method === 'DUMMY' && (
+                <div className="p-3 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-900 text-[11px] font-bold flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    <strong>Dummy Sandbox Active:</strong> Simulates instant payment without real bank debit. Auto-confirms order and issues verifiable PDF receipt.
+                  </span>
+                </div>
+              )}
+
+              {/* Automated Installation & Service Warranty Scheduling Notice (Manual Date Input Removed) */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50/90 via-teal-50/80 to-emerald-50/90 border border-emerald-200 text-emerald-950 space-y-1.5 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-xs text-emerald-900 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    Automatic Installation &amp; Service Warranty Scheduling
+                  </span>
+                  <span className="text-[10px] font-mono font-bold bg-emerald-200/60 px-2 py-0.5 rounded text-emerald-800">
+                    System Automated
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
+                  <div>
+                    <span className="text-slate-500 text-[10px] block">Auto-Scheduled Install:</span>
+                    <span className="font-black text-emerald-900">
+                      {paymentForm.scheduledInstallDate
+                        ? new Date(paymentForm.scheduledInstallDate).toLocaleDateString('en-IN', {
+                            weekday: 'short',
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        : '3 Days from Payment'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 text-[10px] block">Service Warranty Clock:</span>
+                    <span className="font-black text-emerald-800">
+                      Starts on Installation Date
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-emerald-700 italic">
+                  Manual date selection removed. The system automatically schedules technician installation and commences full service &amp; hardware warranties tied to this installation date.
+                </p>
               </div>
 
               <div>
