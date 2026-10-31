@@ -412,8 +412,8 @@ async function main() {
         completedAt: installDate,
         payments: {
           create: [
-            { companyId: company.id, amount: 50000, method: "UPI", status: "COMPLETED", transactionRef: `UPI-ADV-${i}` },
-            { companyId: company.id, amount: 180100, method: "BANK_TRANSFER", status: "COMPLETED", transactionRef: `NEFT-BAL-${i}` },
+            { companyId: company.id, amount: 50000, method: "UPI", status: "COMPLETED", transactionRef: `UPI-ADV-${i}`, receivedAt: installDate },
+            { companyId: company.id, amount: 180100, method: "BANK_TRANSFER", status: "COMPLETED", transactionRef: `NEFT-BAL-${i}`, receivedAt: installDate },
           ],
         },
       },

@@ -15,11 +15,16 @@ const {
 router.use(authenticate);
 router.use(companyScope);
 
-
 router.get(
   "/",
   requireRole("ADMIN", "SALESMAN", "TECHNICIAN"),
   surveysController.listSurveys
+);
+
+router.get(
+  "/technicians",
+  requireRole("ADMIN", "SALESMAN", "TECHNICIAN"),
+  surveysController.getTechnicians
 );
 
 router.get(
@@ -40,7 +45,6 @@ router.post(
   "/:id/submit",
   requireRole("ADMIN", "TECHNICIAN"),
   upload.array("photos", 5),
-  // JSON fields in multipart/form-data will be in req.body
   surveysController.submitSurvey
 );
 

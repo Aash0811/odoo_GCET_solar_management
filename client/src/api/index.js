@@ -12,17 +12,23 @@ export const leadsApi = {
   get: (id) => apiClient.get(`/leads/${id}`),
   create: (data) => apiClient.post('/leads', data),
   submitPublicInquiry: (data) => apiClient.post('/leads/public', data),
+  createCustomerAccount: (id, data) => apiClient.post(`/leads/${id}/create-customer`, data),
+  createCustomerDirect: (data) => apiClient.post('/leads/customer-direct', data),
   updateChecklist: (id, data) => apiClient.patch(`/leads/${id}/checklist`, data),
   updateStage: (id, data, lossReason = null) => {
     const payload = typeof data === 'string' ? { stage: data, lossReason } : data;
     return apiClient.patch(`/leads/${id}/stage`, payload);
   },
+  reassign: (id, assignedToId) => apiClient.patch(`/leads/${id}/assign`, { assignedToId }),
+  logActivity: (id, data) => apiClient.post(`/leads/${id}/activity`, data),
+  getSalesReps: () => apiClient.get('/leads/sales-reps'),
   archive: (id) => apiClient.delete(`/leads/${id}`),
 };
 
 export const surveysApi = {
   list: (params) => apiClient.get('/surveys', { params }),
   get: (id) => apiClient.get(`/surveys/${id}`),
+  getTechnicians: () => apiClient.get('/surveys/technicians'),
   schedule: (data) => apiClient.post('/surveys/schedule', data),
   submit: (id, formData) =>
     apiClient.post(`/surveys/${id}/submit`, formData, {

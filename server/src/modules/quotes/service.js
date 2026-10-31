@@ -157,6 +157,11 @@ async function createQuote(companyId, data, actorId, req = null) {
   const count = await prisma.quote.count({ where: { companyId } });
   const quoteNumber = `Q-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
 
+  const creatorId =
+    actorId ||
+    lead.assignedToId ||
+    (await prisma.user.findFirst({ where: { companyId } }))?.id;
+
   return await prisma.$transaction(async (tx) => {
     const quote = await tx.quote.create({
       data: {
@@ -164,7 +169,7 @@ async function createQuote(companyId, data, actorId, req = null) {
         customerId,
         leadId: lead.id,
         packageTemplateId: template.id,
-        createdById: actorId,
+        createdById: creatorId,
         quoteNumber,
         capacityKw,
         subtotal,

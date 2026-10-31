@@ -26,6 +26,7 @@ import {
   CheckCircle2,
   ArrowRight,
   Sliders,
+  Globe,
 } from 'lucide-react';
 
 const TOUR_STEPS = [
@@ -98,6 +99,7 @@ export default function DashboardLayout() {
     { label: 'Admin Dashboard', path: '/admin/dashboard', icon: LayoutDashboard, roles: ['ADMIN'] },
     { label: 'Solar Package Configurator', path: '/admin/packages', icon: Sliders, roles: ['ADMIN'] },
     { label: 'Lead Board (Kanban)', path: '/sales/leads', icon: Kanban, roles: ['ADMIN', 'SALESMAN'] },
+    { label: 'Site Surveys', path: '/operations/surveys', icon: Compass, roles: ['ADMIN', 'SALESMAN', 'TECHNICIAN'] },
     { label: 'Quote Builder', path: '/sales/quotes', icon: FileSpreadsheet, roles: ['SALESMAN'] },
     { label: 'Orders & Payments', path: '/sales/orders', icon: Receipt, roles: ['ADMIN', 'SALESMAN'] },
     { label: 'Warehouse & Dispatch', path: '/warehouse/dispatch', icon: Boxes, roles: ['ADMIN', 'WAREHOUSE'] },
@@ -221,6 +223,20 @@ export default function DashboardLayout() {
             );
           })}
         </nav>
+
+        {/* Company Website Link as Side Page */}
+        <div className="px-3 pb-2">
+          <Link
+            to="/website"
+            className="group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-amber-300 bg-[#2d1b28] hover:bg-[#3d2537] border border-[#5c3751] transition"
+          >
+            <div className="flex items-center gap-2.5">
+              <Globe className="w-4 h-4 text-[#f09e38]" />
+              <span>Company Website</span>
+            </div>
+            <span className="text-[10px] bg-[#f09e38]/20 text-[#f09e38] px-1.5 py-0.5 rounded font-black">Side Page</span>
+          </Link>
+        </div>
 
         {/* Current User & Logout */}
         <div className="p-4 border-t border-[#382433] bg-[#1A0F17]/90">
@@ -424,6 +440,18 @@ export default function DashboardLayout() {
                 <span>{item.label}</span>
               </Link>
             ))}
+
+            <Link
+              to="/website"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center justify-between p-3 rounded-xl text-sm font-semibold text-amber-300 bg-[#351e2f] hover:bg-[#714b67] border border-[#5c3751]"
+            >
+              <div className="flex items-center gap-3">
+                <Globe className="w-5 h-5 text-[#f09e38]" />
+                <span>Company Website</span>
+              </div>
+              <span className="text-[10px] bg-[#f09e38]/20 text-[#f09e38] px-1.5 py-0.5 rounded font-black">Side Page</span>
+            </Link>
           </div>
 
           <button

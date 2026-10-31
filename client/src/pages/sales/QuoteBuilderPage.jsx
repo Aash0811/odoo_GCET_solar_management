@@ -27,6 +27,7 @@ export default function QuoteBuilderPage() {
 
   // Form states
   const [selectedLeadId, setSelectedLeadId] = useState('');
+  const [activeSurvey, setActiveSurvey] = useState(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [capacityKw, setCapacityKw] = useState(3);
   const [subsidyNote, setSubsidyNote] = useState('Eligible for Central PM Surya Ghar subsidy (up to ₹78,000 for 3kW+) subject to Discom net meter commissioning.');
@@ -59,13 +60,43 @@ export default function QuoteBuilderPage() {
     loadData();
   }, []);
 
-  // When template or capacityKw changes, auto-expand BOM lines (Rule 3)
+  const handleSelectLead = (leadId) => {
+    setSelectedLeadId(leadId);
+    if (!leadId) {
+      setActiveSurvey(null);
+      return;
+    }
+    const chosen = approvedLeads.find((l) => l.id === leadId);
+    if (chosen) {
+      const survey = chosen.surveys?.[0];
+      setActiveSurvey(survey || null);
+      if (survey?.recommendedKw) {
+        setCapacityKw(Number(survey.recommendedKw));
+      } else if (chosen.desiredCapacityKw) {
+        setCapacityKw(Number(chosen.desiredCapacityKw));
+      }
+    }
+  };
+
+  // When template, capacityKw or activeSurvey changes, auto-expand BOM lines (Rule 3 + Module 2 Survey Feed)
   useEffect(() => {
     if (!selectedTemplateId) return;
     const template = templates.find((t) => t.id === selectedTemplateId);
     if (template && template.bomLines) {
       const expanded = template.bomLines.map((bom, idx) => {
-        const qty = Math.max(1, Math.ceil(Number(bom.quantityPerKw) * capacityKw + Number(bom.fixedQuantity)));
+        let qty = Math.max(1, Math.ceil(Number(bom.quantityPerKw) * capacityKw + Number(bom.fixedQuantity)));
+
+        // Module 2 Feature 5: Auto-feed survey results into cable & structure BOM
+        const isCable =
+          bom.product?.category === 'CABLE' ||
+          bom.product?.name?.toLowerCase().includes('cable') ||
+          bom.product?.name?.toLowerCase().includes('wire');
+
+        if (isCable && activeSurvey?.cableDistanceMeters) {
+          // Feed exact surveyed cable run + 20% safety curvature
+          qty = Math.max(15, Math.ceil(Number(activeSurvey.cableDistanceMeters) * 1.2));
+        }
+
         const unitPrice = Number(bom.product?.salePrice || 0);
         return {
           productId: bom.productId,
@@ -80,7 +111,7 @@ export default function QuoteBuilderPage() {
       });
       setBomLines(expanded);
     }
-  }, [selectedTemplateId, capacityKw, templates]);
+  }, [selectedTemplateId, capacityKw, templates, activeSurvey]);
 
   const handleUpdateLine = (index, field, value) => {
     const updated = [...bomLines];
@@ -223,17 +254,52 @@ export default function QuoteBuilderPage() {
               ) : (
                 <select
                   value={selectedLeadId}
-                  onChange={(e) => setSelectedLeadId(e.target.value)}
+                  onChange={(e) => handleSelectLead(e.target.value)}
                   required
                   className="w-full p-3 rounded-xl border border-[#EBDCE7] bg-white font-semibold text-[#241621] focus:ring-2 focus:ring-[#714B67] outline-none shadow-xs cursor-pointer"
                 >
                   <option value="">-- Choose Approved Lead --</option>
                   {approvedLeads.map((l) => (
                     <option key={l.id} value={l.id}>
-                      {l.contactName} - {l.title} ({l.phone}) • {l.desiredCapacityKw || 3} kW Planned
+                      {l.contactName} - {l.title} ({l.phone}) • {l.surveys?.[0]?.recommendedKw || l.desiredCapacityKw || 3} kW Verified
                     </option>
                   ))}
                 </select>
+              )}
+
+              {/* Module 2: Verified Survey Telemetry Banner */}
+              {activeSurvey && (
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-950 space-y-1.5 mt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-xs text-emerald-900 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      Approved Site Survey Telemetry Feed
+                    </span>
+                    <span className="text-[10px] font-mono font-bold bg-emerald-200/60 px-2 py-0.5 rounded text-emerald-800">
+                      Auto-Populated in Quote
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 text-[11px] pt-1">
+                    <div>
+                      <span className="text-slate-500 text-[10px] block">Recommended Size:</span>
+                      <span className="font-black text-emerald-900">{activeSurvey.recommendedKw || capacityKw} kW</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 text-[10px] block">Roof Structure:</span>
+                      <span className="font-bold">{activeSurvey.roofType || 'RCC Flat'}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 text-[10px] block">Measured Cable Run:</span>
+                      <span className="font-black text-emerald-800">
+                        {activeSurvey.cableDistanceMeters ? `${activeSurvey.cableDistanceMeters}m` : 'Standard 25m'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 text-[10px] block">Survey Status:</span>
+                      <span className="font-bold text-emerald-700">✓ Manager Approved</span>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
 

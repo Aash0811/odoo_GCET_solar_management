@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import {
   Sun,
   ShieldCheck,
   ArrowRight,
+  ArrowLeft,
   Sparkles,
   Lock,
   UserPlus,
@@ -14,6 +15,7 @@ import {
   CheckCircle2,
   AlertCircle,
   User,
+  Globe,
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -187,6 +189,20 @@ export default function LoginPage() {
         {/* Right Side: Tabbed Auth View (Sign In vs Customer Sign Up) */}
         <div className="p-8 flex flex-col justify-between bg-[#1c111a]/90">
           <div>
+            {/* Header with Side Page Link */}
+            <div className="mb-4 flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-500/15 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                Main App Entry
+              </span>
+              <Link
+                to="/website"
+                className="text-xs font-black text-amber-300 hover:text-white px-3 py-1 rounded-xl bg-gradient-to-r from-[#714B67] to-[#8c567e] border border-[#a26893] inline-flex items-center gap-1.5 shadow-sm transition hover:scale-105"
+              >
+                <Globe className="w-3.5 h-3.5 text-[#f09e38]" />
+                <span>Company Website (Side Page) →</span>
+              </Link>
+            </div>
+
             {/* Top Tab Bar: Sign In vs Customer Sign Up */}
             <div className="flex p-1 mb-6 rounded-xl bg-[#2e1d2b] border border-[#5e3d55]">
               <button

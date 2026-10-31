@@ -14,6 +14,8 @@ const createLeadSchema = z.object({
   shadowFreeArea: z.boolean().optional().default(false),
   monthlyBill: z.boolean().optional().default(false),
   gridSuitable: z.boolean().optional().default(false),
+  systemType: z.string().optional().nullable(),
+  subsidyInterest: z.boolean().optional().default(false),
 });
 
 const updateLeadSchema = createLeadSchema.partial();
@@ -39,6 +41,19 @@ const updateChecklistSchema = z.object({
   gridSuitable: z.boolean(),
   monthlyBillAmount: z.coerce.number().optional().nullable(),
   desiredCapacityKw: z.coerce.number().optional().nullable(),
+  decision: z.enum(["GO", "NOT_SUITABLE"]).optional().nullable(),
+  lossReason: z.string().optional().nullable(),
+});
+
+const reassignSchema = z.object({
+  assignedToId: z.string().min(1, "Assignee User ID is required"),
+});
+
+const activitySchema = z.object({
+  type: z.enum(["CALL", "NOTE", "REMINDER", "WHATSAPP"]).default("CALL"),
+  outcome: z.string().optional().nullable(),
+  notes: z.string().min(1, "Notes or discussion summary is required"),
+  followUpAt: z.string().optional().nullable(),
 });
 
 module.exports = {
@@ -46,4 +61,6 @@ module.exports = {
   updateLeadSchema,
   updateStageSchema,
   updateChecklistSchema,
+  reassignSchema,
+  activitySchema,
 };

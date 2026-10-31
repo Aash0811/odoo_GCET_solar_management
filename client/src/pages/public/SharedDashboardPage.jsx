@@ -194,9 +194,14 @@ export default function SharedDashboardPage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#3a2534" />
                   <XAxis dataKey="month" stroke="#aa789c" fontSize={11} />
-                  <YAxis stroke="#aa789c" fontSize={11} tickFormatter={(val) => `₹${val / 1000}k`} />
+                  <YAxis
+                    stroke="#aa789c"
+                    fontSize={11}
+                    tickFormatter={(val) => (val >= 100000 ? `₹${(val / 100000).toFixed(1)}L` : `₹${(val / 1000).toFixed(0)}k`)}
+                  />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#241621', borderColor: '#5e3d55', borderRadius: '8px', color: '#fff' }}
+                    formatter={(val) => [`₹${Number(val).toLocaleString('en-IN')}`, 'Amount']}
                   />
                   <Area type="monotone" dataKey="revenue" stroke="#714b67" fill="url(#sharedRev)" name="Revenue" />
                   <Area
@@ -221,7 +226,7 @@ export default function SharedDashboardPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={charts.leadsByStage || []}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#3a2534" />
-                  <XAxis dataKey="stage" stroke="#aa789c" fontSize={9} interval={0} angle={-15} textAnchor="end" />
+                  <XAxis dataKey="stage" stroke="#aa789c" fontSize={9} interval={0} angle={-30} textAnchor="end" height={60} />
                   <YAxis stroke="#aa789c" fontSize={11} allowDecimals={false} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#241621', borderColor: '#5e3d55', borderRadius: '8px', color: '#fff' }}

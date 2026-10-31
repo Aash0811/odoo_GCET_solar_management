@@ -313,7 +313,12 @@ export default function AdminDashboardPage() {
               <BarChart data={data?.charts?.monthlyTrends || []}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                 <XAxis dataKey="month" stroke="#64748B" fontSize={11} fontWeight={600} />
-                <YAxis stroke="#64748B" fontSize={11} fontWeight={600} />
+                <YAxis
+                  stroke="#64748B"
+                  fontSize={11}
+                  fontWeight={600}
+                  tickFormatter={(val) => (val >= 100000 ? `₹${(val / 100000).toFixed(1)}L` : val >= 1000 ? `₹${(val / 1000).toFixed(0)}k` : `₹${val}`)}
+                />
                 <Tooltip
                   formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`}
                   contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '12px', color: '#fff' }}
@@ -340,8 +345,8 @@ export default function AdminDashboardPage() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data?.charts?.leadsByStage || []} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" />
-                <XAxis type="number" stroke="#64748B" fontSize={11} fontWeight={600} />
-                <YAxis type="category" dataKey="stage" width={110} stroke="#64748B" fontSize={10} fontWeight={600} />
+                <XAxis type="number" stroke="#64748B" fontSize={11} fontWeight={600} allowDecimals={false} />
+                <YAxis type="category" dataKey="stage" width={115} stroke="#64748B" fontSize={10} fontWeight={600} />
                 <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '12px', color: '#fff' }} />
                 <Bar dataKey="count" fill="#F59E0B" name="Leads Count" radius={[0, 6, 6, 0]} />
               </BarChart>

@@ -2,10 +2,22 @@ const surveysService = require("./service");
 
 async function listSurveys(req, res, next) {
   try {
-    const surveys = await surveysService.getSurveys(req.companyId, req.query);
+    const surveys = await surveysService.getSurveys(req.companyId, req.query, req.user);
     return res.status(200).json({
       success: true,
       data: surveys,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getTechnicians(req, res, next) {
+  try {
+    const technicians = await surveysService.getTechnicians(req.companyId);
+    return res.status(200).json({
+      success: true,
+      data: technicians,
     });
   } catch (error) {
     next(error);
@@ -29,7 +41,7 @@ async function scheduleSurvey(req, res, next) {
     const survey = await surveysService.scheduleSurvey(req.companyId, req.body, req.user.id, req);
     return res.status(201).json({
       success: true,
-      message: "Survey scheduled successfully.",
+      message: "Survey scheduled successfully and technician notified.",
       data: survey,
     });
   } catch (error) {
@@ -39,7 +51,6 @@ async function scheduleSurvey(req, res, next) {
 
 async function submitSurvey(req, res, next) {
   try {
-    // Multer populates req.files
     const files = req.files || [];
     const updated = await surveysService.submitSurvey(
       req.companyId,
@@ -82,6 +93,7 @@ async function reviewSurvey(req, res, next) {
 
 module.exports = {
   listSurveys,
+  getTechnicians,
   getSurvey,
   scheduleSurvey,
   submitSurvey,

@@ -37,11 +37,23 @@ async function getDashboardStats(companyId, timeframe = "month") {
   const wonLeadsCount = allLeads.filter((l) => l.stage === "WON").length;
   const conversionRate = allLeads.length > 0 ? ((wonLeadsCount / allLeads.length) * 100).toFixed(1) : 0;
 
-  // Leads distribution by stage for Recharts
-  const leadStages = ["NEW", "CONTACTED", "QUALIFIED", "SURVEY_SCHEDULED", "SURVEY_DONE", "SURVEY_APPROVED", "QUOTED", "WON", "LOST"];
-  const leadsByStage = leadStages.map((st) => ({
-    stage: st,
-    count: allLeads.filter((l) => l.stage === st).length,
+  // Leads distribution by stage for Recharts (Dynamic from DB)
+  const leadStageDefs = [
+    { id: "NEW", label: "New Leads" },
+    { id: "CONTACTED", label: "Contacted" },
+    { id: "QUALIFIED", label: "Qualified" },
+    { id: "SURVEY_SCHEDULED", label: "Survey Booked" },
+    { id: "SURVEY_DONE", label: "Survey Done" },
+    { id: "SURVEY_APPROVED", label: "Survey Approved" },
+    { id: "QUOTED", label: "Quoted" },
+    { id: "WON", label: "Won" },
+    { id: "LOST", label: "Lost" },
+  ];
+
+  const leadsByStage = leadStageDefs.map((def) => ({
+    stage: def.label,
+    stageKey: def.id,
+    count: allLeads.filter((l) => l.stage === def.id).length,
   }));
 
   // 2. Quotes & Orders
@@ -88,19 +100,31 @@ async function getDashboardStats(companyId, timeframe = "month") {
       };
     });
 
-  // 4. Revenue, Collections & Outstanding
-  const orders = await prisma.salesOrder.findMany({
+  // 4. Revenue, Collections & Outstanding (Direct from DB)
+  const allOrders = await prisma.salesOrder.findMany({
     where: { companyId },
-    select: { totalAmount: true },
+    select: { totalAmount: true, confirmedAt: true, createdAt: true },
   });
-  const totalRevenue = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+  const totalRevenue = allOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
 
-  const payments = await prisma.payment.findMany({
+  const allPayments = await prisma.payment.findMany({
     where: { companyId, status: "COMPLETED" },
-    select: { amount: true, receivedAt: true },
+    select: { amount: true, receivedAt: true, createdAt: true },
   });
-  const totalCollections = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const totalCollections = allPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const totalOutstanding = Math.max(0, totalRevenue - totalCollections);
+
+  // Timeframe-filtered orders & payments
+  const filteredOrders = dateFilter
+    ? allOrders.filter((o) => new Date(o.confirmedAt || o.createdAt) >= dateFilter.gte)
+    : allOrders;
+  const filteredRevenue = filteredOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+
+  const filteredPayments = dateFilter
+    ? allPayments.filter((p) => new Date(p.receivedAt || p.createdAt) >= dateFilter.gte)
+    : allPayments;
+  const filteredCollections = filteredPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const filteredOutstanding = Math.max(0, filteredRevenue - filteredCollections);
 
   // 5. Job Costing & Loss-Making Jobs
   const jobCostings = await getJobCosting(companyId);
@@ -139,15 +163,38 @@ async function getDashboardStats(companyId, timeframe = "month") {
   // 8. Warranties Expiring in 60 Days
   const expiringWarranties = await getExpiringWarranties(companyId, 60);
 
-  // 9. Monthly Revenue & Collections Trend for Recharts
-  const monthlyTrends = [
-    { month: "May", revenue: 420000, collections: 380000 },
-    { month: "Jun", revenue: 580000, collections: 510000 },
-    { month: "Jul", revenue: 690000, collections: 640000 },
-    { month: "Aug", revenue: 810000, collections: 750000 },
-    { month: "Sep", revenue: 950000, collections: 890000 },
-    { month: "Oct", revenue: totalRevenue, collections: totalCollections },
-  ];
+  // 9. Dynamic Monthly Revenue & Collections Trend (Calculated from Real DB Records)
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const now = new Date();
+  const monthlyTrends = [];
+
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const year = d.getFullYear();
+    const month = d.getMonth();
+    const monthLabel = monthNames[month];
+
+    const monthRevenue = allOrders
+      .filter((o) => {
+        const orderDate = new Date(o.confirmedAt || o.createdAt);
+        return orderDate.getFullYear() === year && orderDate.getMonth() === month;
+      })
+      .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+
+    const monthCollections = allPayments
+      .filter((p) => {
+        const payDate = new Date(p.receivedAt || p.createdAt);
+        return payDate.getFullYear() === year && payDate.getMonth() === month;
+      })
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+
+    monthlyTrends.push({
+      month: monthLabel,
+      year,
+      revenue: Math.round(monthRevenue),
+      collections: Math.round(monthCollections),
+    });
+  }
 
   return {
     timeframe,
@@ -156,13 +203,17 @@ async function getDashboardStats(companyId, timeframe = "month") {
       totalLeads: allLeads.length,
       conversionRate: Number(conversionRate),
       quotesPending: quotesPendingCount,
-      ordersCount,
+      ordersCount: filteredOrders.length,
+      totalOrdersCount: allOrders.length,
       jobsCompleted: jobsCompletedCount,
       jobsInProgress: jobsInProgressCount,
       jobsUnfinished: unfinishedJobs.length,
-      totalRevenue,
-      totalCollections,
-      totalOutstanding,
+      totalRevenue: Math.round(filteredRevenue),
+      totalCollections: Math.round(filteredCollections),
+      totalOutstanding: Math.round(filteredOutstanding),
+      allTimeRevenue: Math.round(totalRevenue),
+      allTimeCollections: Math.round(totalCollections),
+      allTimeOutstanding: Math.round(totalOutstanding),
       lossMakingJobsCount,
       openTicketsCount: openTicketsWithAge.length,
       lowStockCount: lowStockProducts.length,

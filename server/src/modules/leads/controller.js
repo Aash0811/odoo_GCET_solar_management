@@ -15,7 +15,9 @@ async function createPublicLead(req, res, next) {
     const lead = await leadsService.createLead(company.id, leadData, null, req);
     return res.status(201).json({
       success: true,
-      message: "Your solar inquiry has been received. Our sales engineering team will call you shortly!",
+      message: lead.isDuplicateMerged
+        ? lead.mergeMessage
+        : "Your solar inquiry has been received. Our sales engineering team will call you shortly!",
       data: lead,
     });
   } catch (error) {
@@ -25,10 +27,22 @@ async function createPublicLead(req, res, next) {
 
 async function listLeads(req, res, next) {
   try {
-    const leads = await leadsService.getLeads(req.companyId, req.query);
+    const leads = await leadsService.getLeads(req.companyId, req.query, req.user);
     return res.status(200).json({
       success: true,
       data: leads,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getSalesReps(req, res, next) {
+  try {
+    const reps = await leadsService.getSalesReps(req.companyId);
+    return res.status(200).json({
+      success: true,
+      data: reps,
     });
   } catch (error) {
     next(error);
@@ -52,7 +66,9 @@ async function createLead(req, res, next) {
     const lead = await leadsService.createLead(req.companyId, req.body, req.user.id, req);
     return res.status(201).json({
       success: true,
-      message: "Lead created successfully.",
+      message: lead.isDuplicateMerged
+        ? lead.mergeMessage
+        : "Lead created and assigned successfully.",
       data: lead,
     });
   } catch (error) {
@@ -65,7 +81,9 @@ async function updateChecklist(req, res, next) {
     const updated = await leadsService.updateChecklist(req.companyId, req.params.id, req.body, req.user.id, req);
     return res.status(200).json({
       success: true,
-      message: "Lead qualification checklist updated.",
+      message: updated.stage === "LOST"
+        ? "Lead marked as Not Suitable (Lost)."
+        : "Lead qualification checklist updated.",
       data: updated,
     });
   } catch (error) {
@@ -86,6 +104,44 @@ async function updateStage(req, res, next) {
   }
 }
 
+async function reassignLead(req, res, next) {
+  try {
+    const updated = await leadsService.reassignLead(
+      req.companyId,
+      req.params.id,
+      req.body.assignedToId,
+      req.user.id,
+      req
+    );
+    return res.status(200).json({
+      success: true,
+      message: "Lead successfully reassigned to sales representative.",
+      data: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function logActivity(req, res, next) {
+  try {
+    const updated = await leadsService.logActivity(
+      req.companyId,
+      req.params.id,
+      req.body,
+      req.user.id,
+      req
+    );
+    return res.status(200).json({
+      success: true,
+      message: "Activity logged successfully.",
+      data: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function archiveLead(req, res, next) {
   try {
     const archived = await leadsService.archiveLead(req.companyId, req.params.id, req.user.id, req);
@@ -99,12 +155,54 @@ async function archiveLead(req, res, next) {
   }
 }
 
+async function createCustomerAccount(req, res, next) {
+  try {
+    const result = await leadsService.createCustomerAccountForLead(
+      req.companyId,
+      req.params.id,
+      req.body,
+      req.user.id,
+      req
+    );
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function createCustomerDirect(req, res, next) {
+  try {
+    const result = await leadsService.createDirectCustomer(
+      req.companyId,
+      req.body,
+      req.user.id,
+      req
+    );
+    return res.status(201).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   createPublicLead,
   listLeads,
+  getSalesReps,
   getLead,
   createLead,
   updateChecklist,
   updateStage,
+  reassignLead,
+  logActivity,
   archiveLead,
+  createCustomerAccount,
+  createCustomerDirect,
 };

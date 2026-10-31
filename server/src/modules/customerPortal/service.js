@@ -39,6 +39,9 @@ async function getCustomerPortalData(companyId, customerId) {
       subsidyApplications: {
         orderBy: { createdAt: "desc" },
       },
+      leads: {
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 
@@ -77,6 +80,7 @@ async function getCustomerPortalData(companyId, customerId) {
       city: customer.city,
     },
     quotes: customer.quotes,
+    leads: customer.leads,
     orders: customer.orders,
     warranties: formattedWarranties,
     tickets: customer.tickets,

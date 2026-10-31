@@ -6,6 +6,7 @@ import DashboardLayout from '../layouts/DashboardLayout';
 // Pages
 import LoginPage from '../pages/auth/LoginPage';
 import SharedDashboardPage from '../pages/public/SharedDashboardPage';
+import CompanyWebsitePage from '../pages/public/CompanyWebsitePage';
 import AdminDashboardPage from '../pages/admin/AdminDashboardPage';
 import LeadBoardPage from '../pages/sales/LeadBoardPage';
 import QuoteBuilderPage from '../pages/sales/QuoteBuilderPage';
@@ -17,6 +18,7 @@ import ServiceDeskPage from '../pages/support/ServiceDeskPage';
 import FinancePage from '../pages/finance/FinancePage';
 import CustomerPortalPage from '../pages/customer/CustomerPortalPage';
 import SolarPackageConfiguratorPage from '../pages/admin/SolarPackageConfiguratorPage';
+import SurveysPage from '../pages/operations/SurveysPage';
 import { useAuth } from '../hooks/useAuth';
 
 function RootRedirect() {
@@ -35,12 +37,15 @@ function RootRedirect() {
 export default function AppRoutes() {
   return (
     <Routes>
-      {/* Public Routes */}
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/shared-dashboard" element={<SharedDashboardPage />} />
-
-      {/* Root redirect */}
+      {/* Root Application - Defaults to Login / Role Dashboard */}
       <Route path="/" element={<RootRedirect />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/app" element={<RootRedirect />} />
+
+      {/* Side Pages: Company Website & Shared Dashboard */}
+      <Route path="/website" element={<CompanyWebsitePage />} />
+      <Route path="/company-website" element={<CompanyWebsitePage />} />
+      <Route path="/shared-dashboard" element={<SharedDashboardPage />} />
 
       {/* Protected Routes inside DashboardLayout */}
       <Route element={<ProtectedRoute />}>
@@ -63,6 +68,11 @@ export default function AppRoutes() {
           <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SALESMAN']} />}>
             <Route path="/sales/leads" element={<LeadBoardPage />} />
             <Route path="/sales/orders" element={<OrderPaymentsPage />} />
+          </Route>
+
+          {/* Site Survey Operations (Admin, Salesman, Technician) */}
+          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SALESMAN', 'TECHNICIAN']} />}>
+            <Route path="/operations/surveys" element={<SurveysPage />} />
           </Route>
 
           {/* Warehouse routes */}
