@@ -58,6 +58,15 @@ app.get("/api/v1", (req, res) => {
   });
 });
 
+// Mount modules
+app.use("/api/v1/auth", require("./modules/auth/routes"));
+app.use("/api/v1/leads", require("./modules/leads/routes"));
+app.use("/api/v1/surveys", require("./modules/surveys/routes"));
+app.use("/api/v1/inventory", require("./modules/inventory/routes"));
+app.use("/api/v1/quotes", require("./modules/quotes/routes"));
+app.use("/api/v1/orders", require("./modules/orders/routes"));
+app.use("/api/v1/dispatch", require("./modules/dispatch/routes"));
+
 // Health endpoint: checks both the API process and PostgreSQL.
 app.get("/health", async (req, res, next) => {
   try {

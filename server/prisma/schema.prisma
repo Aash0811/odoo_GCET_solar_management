@@ -216,53 +216,53 @@ enum AuditAction {
 // ============================================================
 
 model Company {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   name      String
-  slug      String   @unique
+  slug      String  @unique
   email     String?
   phone     String?
   address   String?
   gstNumber String?
-  isActive  Boolean  @default(true)
+  isActive  Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users              User[]
-  customers          Customer[]
-  leads              Lead[]
-  products           Product[]
-  packageTemplates   PackageTemplate[]
-  quotes             Quote[]
-  orders             SalesOrder[]
-  payments           Payment[]
-  pickLists          PickList[]
-  serialNumbers      SerialNumber[]
-  deliveries         Delivery[]
-  warranties         Warranty[]
-  installationJobs   InstallationJob[]
-  tickets            Ticket[]
-  invoices           Invoice[]
+  users               User[]
+  customers           Customer[]
+  leads               Lead[]
+  products            Product[]
+  packageTemplates    PackageTemplate[]
+  quotes              Quote[]
+  orders              SalesOrder[]
+  payments            Payment[]
+  pickLists           PickList[]
+  serialNumbers       SerialNumber[]
+  deliveries          Delivery[]
+  warranties          Warranty[]
+  installationJobs    InstallationJob[]
+  tickets             Ticket[]
+  invoices            Invoice[]
   subsidyApplications SubsidyApplication[]
-  timeEntries        TimeEntry[]
-  costEntries        CostEntry[]
-  stockMoves         StockMove[]
-  notifications      Notification[]
-  auditLogs          AuditLog[]
-  shareLinks         DashboardShareLink[]
+  timeEntries         TimeEntry[]
+  costEntries         CostEntry[]
+  stockMoves          StockMove[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  shareLinks          DashboardShareLink[]
 
   @@index([isActive])
 }
 
 model User {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   companyId    String
   name         String
   email        String?
   phone        String?
   passwordHash String
   role         UserRole
-  isActive     Boolean  @default(true)
+  isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
 
   createdAt DateTime @default(now())
@@ -270,17 +270,17 @@ model User {
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
-  assignedLeads       Lead[]             @relation("LeadAssignee")
-  createdQuotes       Quote[]             @relation("QuoteCreator")
-  createdOrders       SalesOrder[]        @relation("OrderCreator")
-  createdPickLists    PickList[]          @relation("PickListCreator")
-  assignedJobs        InstallationJob[]   @relation("JobTechnician")
-  createdTickets      Ticket[]            @relation("TicketCreator")
-  assignedTickets     Ticket[]            @relation("TicketAssignee")
-  createdInvoices     Invoice[]           @relation("InvoiceCreator")
-  timeEntries         TimeEntry[]
-  notifications       Notification[]
-  auditLogs           AuditLog[]          @relation("AuditActor")
+  assignedLeads    Lead[]            @relation("LeadAssignee")
+  createdQuotes    Quote[]           @relation("QuoteCreator")
+  createdOrders    SalesOrder[]      @relation("OrderCreator")
+  createdPickLists PickList[]        @relation("PickListCreator")
+  assignedJobs     InstallationJob[] @relation("JobTechnician")
+  createdTickets   Ticket[]          @relation("TicketCreator")
+  assignedTickets  Ticket[]          @relation("TicketAssignee")
+  createdInvoices  Invoice[]         @relation("InvoiceCreator")
+  timeEntries      TimeEntry[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]        @relation("AuditActor")
 
   @@unique([companyId, email])
   @@unique([companyId, phone])
@@ -292,20 +292,20 @@ model User {
 // ============================================================
 
 model Customer {
-  id          String   @id @default(cuid())
-  companyId   String
-  name        String
-  email       String?
-  phone       String
+  id             String   @id @default(cuid())
+  companyId      String
+  name           String
+  email          String?
+  phone          String
   alternatePhone String?
-  address     String?
-  city        String?
-  state       String?
-  postalCode  String?
-  latitude    Decimal? @db.Decimal(10, 7)
-  longitude   Decimal? @db.Decimal(10, 7)
-  notes       String?
-  isActive    Boolean  @default(true)
+  address        String?
+  city           String?
+  state          String?
+  postalCode     String?
+  latitude       Decimal? @db.Decimal(10, 7)
+  longitude      Decimal? @db.Decimal(10, 7)
+  notes          String?
+  isActive       Boolean  @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -330,31 +330,31 @@ model Customer {
 }
 
 model Lead {
-  id                String    @id @default(cuid())
-  companyId         String
-  customerId        String?
-  assignedToId      String?
+  id           String  @id @default(cuid())
+  companyId    String
+  customerId   String?
+  assignedToId String?
 
-  title             String
-  contactName       String
-  email             String?
-  phone             String
-  address           String?
-  source            String?
-  notes             String?
+  title       String
+  contactName String
+  email       String?
+  phone       String
+  address     String?
+  source      String?
+  notes       String?
 
-  stage             LeadStage @default(NEW)
+  stage LeadStage @default(NEW)
 
   // Qualification checklist
-  shadowFreeArea    Boolean   @default(false)
-  monthlyBill       Boolean   @default(false)
-  gridSuitable      Boolean   @default(false)
-  monthlyBillAmount Decimal?  @db.Decimal(12, 2)
-  desiredCapacityKw Decimal?  @db.Decimal(8, 2)
+  shadowFreeArea    Boolean  @default(false)
+  monthlyBill       Boolean  @default(false)
+  gridSuitable      Boolean  @default(false)
+  monthlyBillAmount Decimal? @db.Decimal(12, 2)
+  desiredCapacityKw Decimal? @db.Decimal(8, 2)
 
-  lossReason        String?
-  archivedAt        DateTime?
-  lastContactAt     DateTime?
+  lossReason    String?
+  archivedAt    DateTime?
+  lastContactAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -379,24 +379,24 @@ model Lead {
 // ============================================================
 
 model Survey {
-  id             String       @id @default(cuid())
-  companyId      String
-  leadId         String
+  id        String @id @default(cuid())
+  companyId String
+  leadId    String
 
-  status         SurveyStatus @default(REQUESTED)
-  scheduledAt    DateTime?
-  completedAt    DateTime?
-  reviewedAt     DateTime?
-  approvedAt     DateTime?
+  status      SurveyStatus @default(REQUESTED)
+  scheduledAt DateTime?
+  completedAt DateTime?
+  reviewedAt  DateTime?
+  approvedAt  DateTime?
 
-  surveyedById   String?
-  roofType       String?
-  roofAreaSqFt   Decimal?     @db.Decimal(10, 2)
-  shadowFreeArea Boolean      @default(false)
-  monthlyBill    Boolean      @default(false)
-  gridSuitable   Boolean      @default(false)
-  recommendedKw  Decimal?     @db.Decimal(8, 2)
-  notes          String?
+  surveyedById    String?
+  roofType        String?
+  roofAreaSqFt    Decimal? @db.Decimal(10, 2)
+  shadowFreeArea  Boolean  @default(false)
+  monthlyBill     Boolean  @default(false)
+  gridSuitable    Boolean  @default(false)
+  recommendedKw   Decimal? @db.Decimal(8, 2)
+  notes           String?
   rejectionReason String?
 
   createdAt DateTime @default(now())
@@ -411,12 +411,12 @@ model Survey {
 }
 
 model SurveyPhoto {
-  id          String   @id @default(cuid())
-  surveyId    String
-  url         String
-  publicId    String?
-  caption     String?
-  uploadedAt  DateTime @default(now())
+  id         String   @id @default(cuid())
+  surveyId   String
+  url        String
+  publicId   String?
+  caption    String?
+  uploadedAt DateTime @default(now())
 
   survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
 
@@ -428,39 +428,39 @@ model SurveyPhoto {
 // ============================================================
 
 model Product {
-  id             String   @id @default(cuid())
-  companyId      String
+  id        String @id @default(cuid())
+  companyId String
 
-  sku            String
-  name           String
-  category       String
-  description    String?
+  sku         String
+  name        String
+  category    String
+  description String?
 
-  unit           String   @default("unit")
+  unit            String  @default("unit")
   isSerialTracked Boolean @default(false)
 
-  warrantyYears  Int      @default(0)
+  warrantyYears Int @default(0)
 
-  costPrice      Decimal  @db.Decimal(12, 2)
-  salePrice      Decimal  @db.Decimal(12, 2)
-  stockQty       Decimal  @default(0) @db.Decimal(12, 3)
-  reorderLevel   Decimal  @default(0) @db.Decimal(12, 3)
+  costPrice    Decimal @db.Decimal(12, 2)
+  salePrice    Decimal @db.Decimal(12, 2)
+  stockQty     Decimal @default(0) @db.Decimal(12, 3)
+  reorderLevel Decimal @default(0) @db.Decimal(12, 3)
 
-  gstRate        Decimal  @default(18) @db.Decimal(5, 2)
-  isActive       Boolean  @default(true)
+  gstRate  Decimal @default(18) @db.Decimal(5, 2)
+  isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
-  bomLines       BomLine[]
-  quoteLines     QuoteLine[]
-  pickLines      PickLine[]
-  serialNumbers  SerialNumber[]
-  ticketLines    TicketLine[]
-  invoiceLines   InvoiceLine[]
-  stockMoves     StockMove[]
+  bomLines      BomLine[]
+  quoteLines    QuoteLine[]
+  pickLines     PickLine[]
+  serialNumbers SerialNumber[]
+  ticketLines   TicketLine[]
+  invoiceLines  InvoiceLine[]
+  stockMoves    StockMove[]
 
   @@unique([companyId, sku])
   @@index([companyId, category, isActive])
@@ -468,19 +468,19 @@ model Product {
 }
 
 model PackageTemplate {
-  id          String      @id @default(cuid())
-  companyId   String
+  id        String @id @default(cuid())
+  companyId String
 
   name        String
   description String?
   type        PackageType
 
-  minCapacityKw Decimal @default(1) @db.Decimal(8, 2)
-  maxCapacityKw Decimal @default(5) @db.Decimal(8, 2)
+  minCapacityKw     Decimal @default(1) @db.Decimal(8, 2)
+  maxCapacityKw     Decimal @default(5) @db.Decimal(8, 2)
   defaultCapacityKw Decimal @default(3) @db.Decimal(8, 2)
 
-  basePrice   Decimal?    @db.Decimal(12, 2)
-  isActive    Boolean     @default(true)
+  basePrice Decimal? @db.Decimal(12, 2)
+  isActive  Boolean  @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -494,17 +494,17 @@ model PackageTemplate {
 }
 
 model BomLine {
-  id               String  @id @default(cuid())
+  id                String @id @default(cuid())
   packageTemplateId String
-  productId        String
+  productId         String
 
   // Quantity required per kW of installed capacity.
-  quantityPerKw    Decimal @db.Decimal(12, 4)
+  quantityPerKw Decimal @db.Decimal(12, 4)
 
   // Fixed quantity added once per package.
-  fixedQuantity    Decimal @default(0) @db.Decimal(12, 3)
+  fixedQuantity Decimal @default(0) @db.Decimal(12, 3)
 
-  notes            String?
+  notes String?
 
   packageTemplate PackageTemplate @relation(fields: [packageTemplateId], references: [id], onDelete: Cascade)
 
@@ -519,35 +519,35 @@ model BomLine {
 // ============================================================
 
 model Quote {
-  id                String      @id @default(cuid())
+  id                String @id @default(cuid())
   companyId         String
   customerId        String
   leadId            String
   packageTemplateId String
   createdById       String
 
-  quoteNumber       String
-  status            QuoteStatus @default(DRAFT)
+  quoteNumber String
+  status      QuoteStatus @default(DRAFT)
 
-  capacityKw        Decimal     @db.Decimal(8, 2)
+  capacityKw Decimal @db.Decimal(8, 2)
 
-  subtotal          Decimal     @db.Decimal(12, 2)
-  discountAmount    Decimal     @default(0) @db.Decimal(12, 2)
-  gstAmount         Decimal     @default(0) @db.Decimal(12, 2)
-  totalAmount       Decimal     @db.Decimal(12, 2)
+  subtotal       Decimal @db.Decimal(12, 2)
+  discountAmount Decimal @default(0) @db.Decimal(12, 2)
+  gstAmount      Decimal @default(0) @db.Decimal(12, 2)
+  totalAmount    Decimal @db.Decimal(12, 2)
 
-  gstRate           Decimal     @default(18) @db.Decimal(5, 2)
-  subsidyNote       String?
-  terms             String?
-  notes             String?
+  gstRate     Decimal @default(18) @db.Decimal(5, 2)
+  subsidyNote String?
+  terms       String?
+  notes       String?
 
-  pdfUrl            String?
-  pdfPublicId       String?
+  pdfUrl      String?
+  pdfPublicId String?
 
-  sentAt            DateTime?
-  acceptedAt        DateTime?
-  rejectedAt        DateTime?
-  expiresAt         DateTime?
+  sentAt     DateTime?
+  acceptedAt DateTime?
+  rejectedAt DateTime?
+  expiresAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -572,21 +572,21 @@ model Quote {
 }
 
 model QuoteLine {
-  id          String  @id @default(cuid())
-  quoteId     String
-  productId   String?
+  id        String  @id @default(cuid())
+  quoteId   String
+  productId String?
 
   description String
   quantity    Decimal @db.Decimal(12, 3)
   unit        String  @default("unit")
 
-  unitPrice   Decimal @db.Decimal(12, 2)
-  unitCost    Decimal @default(0) @db.Decimal(12, 2)
+  unitPrice Decimal @db.Decimal(12, 2)
+  unitCost  Decimal @default(0) @db.Decimal(12, 2)
 
-  gstRate     Decimal @default(18) @db.Decimal(5, 2)
-  lineTotal   Decimal @db.Decimal(12, 2)
+  gstRate   Decimal @default(18) @db.Decimal(5, 2)
+  lineTotal Decimal @db.Decimal(12, 2)
 
-  sortOrder   Int     @default(0)
+  sortOrder Int @default(0)
 
   quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 
@@ -601,21 +601,21 @@ model QuoteLine {
 // ============================================================
 
 model SalesOrder {
-  id           String      @id @default(cuid())
-  companyId    String
-  customerId   String
-  quoteId      String
-  createdById  String
+  id          String @id @default(cuid())
+  companyId   String
+  customerId  String
+  quoteId     String
+  createdById String
 
-  orderNumber  String
-  status       OrderStatus @default(PENDING_PAYMENT)
+  orderNumber String
+  status      OrderStatus @default(PENDING_PAYMENT)
 
-  capacityKw   Decimal     @db.Decimal(8, 2)
+  capacityKw Decimal @db.Decimal(8, 2)
 
-  revenue      Decimal     @db.Decimal(12, 2)
-  subtotal     Decimal     @db.Decimal(12, 2)
-  gstAmount    Decimal     @default(0) @db.Decimal(12, 2)
-  totalAmount  Decimal     @db.Decimal(12, 2)
+  revenue     Decimal @db.Decimal(12, 2)
+  subtotal    Decimal @db.Decimal(12, 2)
+  gstAmount   Decimal @default(0) @db.Decimal(12, 2)
+  totalAmount Decimal @db.Decimal(12, 2)
 
   confirmedAt  DateTime?
   dispatchedAt DateTime?
@@ -623,7 +623,7 @@ model SalesOrder {
   completedAt  DateTime?
   cancelledAt  DateTime?
 
-  notes        String?
+  notes String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -636,16 +636,16 @@ model SalesOrder {
 
   createdBy User @relation("OrderCreator", fields: [createdById], references: [id], onDelete: Restrict)
 
-  payments       Payment[]
-  pickLists      PickList[]
-  serialNumbers  SerialNumber[]
-  deliveries     Delivery[]
+  payments         Payment[]
+  pickLists        PickList[]
+  serialNumbers    SerialNumber[]
+  deliveries       Delivery[]
   installationJobs InstallationJob[]
-  tickets        Ticket[]
-  invoices       Invoice[]
-  timeEntries    TimeEntry[]
-  costEntries    CostEntry[]
-  stockMoves     StockMove[]
+  tickets          Ticket[]
+  invoices         Invoice[]
+  timeEntries      TimeEntry[]
+  costEntries      CostEntry[]
+  stockMoves       StockMove[]
 
   @@unique([companyId, orderNumber])
   @@index([companyId, status, createdAt])
@@ -654,16 +654,16 @@ model SalesOrder {
 }
 
 model Payment {
-  id             String        @id @default(cuid())
-  companyId      String
-  orderId        String
+  id        String @id @default(cuid())
+  companyId String
+  orderId   String
 
-  amount         Decimal       @db.Decimal(12, 2)
-  method         PaymentMethod
-  status         PaymentStatus @default(COMPLETED)
+  amount Decimal       @db.Decimal(12, 2)
+  method PaymentMethod
+  status PaymentStatus @default(COMPLETED)
 
   transactionRef String?
-  receivedAt     DateTime      @default(now())
+  receivedAt     DateTime @default(now())
   notes          String?
 
   createdAt DateTime @default(now())
@@ -683,7 +683,7 @@ model Payment {
 // ============================================================
 
 model PickList {
-  id          String         @id @default(cuid())
+  id          String  @id @default(cuid())
   companyId   String
   orderId     String
   createdById String?
@@ -691,9 +691,9 @@ model PickList {
   pickNumber String
   status     PickListStatus @default(OPEN)
 
-  assignedAt DateTime?
+  assignedAt  DateTime?
   completedAt DateTime?
-  notes      String?
+  notes       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -712,14 +712,14 @@ model PickList {
 }
 
 model PickLine {
-  id           String  @id @default(cuid())
-  pickListId   String
-  productId    String
+  id         String @id @default(cuid())
+  pickListId String
+  productId  String
 
-  requiredQty  Decimal @db.Decimal(12, 3)
-  pickedQty    Decimal @default(0) @db.Decimal(12, 3)
+  requiredQty Decimal @db.Decimal(12, 3)
+  pickedQty   Decimal @default(0) @db.Decimal(12, 3)
 
-  notes        String?
+  notes String?
 
   pickList PickList @relation(fields: [pickListId], references: [id], onDelete: Cascade)
 
@@ -730,17 +730,17 @@ model PickLine {
 }
 
 model StockMove {
-  id          String        @id @default(cuid())
-  companyId   String
-  productId   String
-  orderId     String?
+  id        String  @id @default(cuid())
+  companyId String
+  productId String
+  orderId   String?
 
-  type        StockMoveType
-  quantity    Decimal       @db.Decimal(12, 3)
+  type     StockMoveType
+  quantity Decimal       @db.Decimal(12, 3)
 
-  reference   String?
-  notes       String?
-  createdAt   DateTime      @default(now())
+  reference String?
+  notes     String?
+  createdAt DateTime @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
@@ -757,15 +757,15 @@ model StockMove {
 // ============================================================
 
 model SerialNumber {
-  id          String      @id @default(cuid())
-  companyId   String
-  productId   String
+  id        String @id @default(cuid())
+  companyId String
+  productId String
 
-  orderId     String?
-  customerId  String?
+  orderId    String?
+  customerId String?
 
-  serial      String
-  status      SerialStatus @default(IN_STOCK)
+  serial String
+  status SerialStatus @default(IN_STOCK)
 
   scannedAt   DateTime?
   deliveredAt DateTime?
@@ -788,7 +788,7 @@ model SerialNumber {
 
   replacedBy SerialNumber? @relation("SerialReplacement")
 
-  warranties Warranty[]
+  warranties  Warranty[]
   ticketLines TicketLine[]
 
   @@unique([companyId, serial])
@@ -798,20 +798,20 @@ model SerialNumber {
 }
 
 model Delivery {
-  id          String         @id @default(cuid())
-  companyId   String
-  orderId     String
-  customerId  String
+  id         String @id @default(cuid())
+  companyId  String
+  orderId    String
+  customerId String
 
   deliveryNumber String
-  status      DeliveryStatus @default(DRAFT)
+  status         DeliveryStatus @default(DRAFT)
 
   deliveryDate DateTime?
   validatedAt  DateTime?
   deliveredAt  DateTime?
 
-  deliveredTo  String?
-  notes        String?
+  deliveredTo String?
+  notes       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -828,18 +828,18 @@ model Delivery {
 }
 
 model Warranty {
-  id             String        @id @default(cuid())
+  id             String @id @default(cuid())
   companyId      String
   serialNumberId String
   customerId     String
 
-  status         WarrantyStatus @default(ACTIVE)
+  status WarrantyStatus @default(ACTIVE)
 
-  startDate      DateTime
-  endDate        DateTime
+  startDate DateTime
+  endDate   DateTime
 
-  voidedAt       DateTime?
-  voidReason     String?
+  voidedAt   DateTime?
+  voidReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -860,29 +860,29 @@ model Warranty {
 // ============================================================
 
 model InstallationJob {
-  id           String    @id @default(cuid())
+  id           String  @id @default(cuid())
   companyId    String
   orderId      String
   customerId   String
   technicianId String?
 
-  jobNumber    String
-  status       JobStatus @default(SCHEDULED)
+  jobNumber String
+  status    JobStatus @default(SCHEDULED)
 
-  scheduledAt  DateTime?
-  startTime    DateTime?
-  endTime      DateTime?
+  scheduledAt DateTime?
+  startTime   DateTime?
+  endTime     DateTime?
 
-  confirmedKw  Decimal?  @db.Decimal(8, 2)
-  notes        String?
+  confirmedKw   Decimal? @db.Decimal(8, 2)
+  notes         String?
   blockedReason String?
 
   // Mandatory completion checklist.
-  standsInstalled    Boolean @default(false)
-  panelsInstalled    Boolean @default(false)
-  boxesInstalled     Boolean @default(false)
+  standsInstalled   Boolean @default(false)
+  panelsInstalled   Boolean @default(false)
+  boxesInstalled    Boolean @default(false)
   earthingCompleted Boolean @default(false)
-  powerTestPassed    Boolean @default(false)
+  powerTestPassed   Boolean @default(false)
 
   completedAt DateTime?
 
@@ -909,13 +909,13 @@ model InstallationJob {
 }
 
 model JobPhoto {
-  id             String   @id @default(cuid())
+  id                String @id @default(cuid())
   installationJobId String
 
-  url            String
-  publicId       String?
-  caption        String?
-  uploadedAt     DateTime @default(now())
+  url        String
+  publicId   String?
+  caption    String?
+  uploadedAt DateTime @default(now())
 
   installationJob InstallationJob @relation(fields: [installationJobId], references: [id], onDelete: Cascade)
 
@@ -923,16 +923,16 @@ model JobPhoto {
 }
 
 model Signature {
-  id                String   @id @default(cuid())
-  installationJobId String   @unique
+  id                String @id @default(cuid())
+  installationJobId String @unique
   customerId        String
 
-  imageUrl          String
-  publicId          String?
+  imageUrl String
+  publicId String?
 
-  signedByName      String
-  signedAt          DateTime @default(now())
-  acceptanceText    String?
+  signedByName   String
+  signedAt       DateTime @default(now())
+  acceptanceText String?
 
   installationJob InstallationJob @relation(fields: [installationJobId], references: [id], onDelete: Restrict)
 
@@ -946,26 +946,26 @@ model Signature {
 // ============================================================
 
 model Ticket {
-  id          String         @id @default(cuid())
-  companyId   String
-  customerId  String
+  id         String @id @default(cuid())
+  companyId  String
+  customerId String
 
-  orderId     String?
-  createdById String?
+  orderId      String?
+  createdById  String?
   assignedToId String?
 
   ticketNumber String
   title        String
   description  String?
 
-  status       TicketStatus   @default(NEW)
-  priority     TicketPriority @default(MEDIUM)
+  status   TicketStatus   @default(NEW)
+  priority TicketPriority @default(MEDIUM)
 
-  reportedAt   DateTime       @default(now())
-  assignedAt   DateTime?
-  resolvedAt   DateTime?
-  confirmedAt  DateTime?
-  closedAt     DateTime?
+  reportedAt  DateTime  @default(now())
+  assignedAt  DateTime?
+  resolvedAt  DateTime?
+  confirmedAt DateTime?
+  closedAt    DateTime?
 
   resolutionNotes String?
 
@@ -993,22 +993,22 @@ model Ticket {
 }
 
 model TicketLine {
-  id          String         @id @default(cuid())
-  ticketId    String
+  id       String @id @default(cuid())
+  ticketId String
 
-  productId   String?
+  productId      String?
   serialNumberId String?
 
   type        TicketLineType
   description String
 
-  quantity    Decimal        @default(1) @db.Decimal(12, 3)
+  quantity Decimal @default(1) @db.Decimal(12, 3)
 
-  unitPrice   Decimal        @db.Decimal(12, 2)
-  unitCost    Decimal        @default(0) @db.Decimal(12, 2)
-  lineTotal   Decimal        @db.Decimal(12, 2)
+  unitPrice Decimal @db.Decimal(12, 2)
+  unitCost  Decimal @default(0) @db.Decimal(12, 2)
+  lineTotal Decimal @db.Decimal(12, 2)
 
-  isWarrantyCovered Boolean  @default(false)
+  isWarrantyCovered Boolean @default(false)
 
   createdAt DateTime @default(now())
 
@@ -1027,9 +1027,9 @@ model TicketLine {
 // ============================================================
 
 model Invoice {
-  id          String        @id @default(cuid())
-  companyId   String
-  customerId  String
+  id         String @id @default(cuid())
+  companyId  String
+  customerId String
 
   orderId     String?
   ticketId    String?
@@ -1038,21 +1038,21 @@ model Invoice {
   invoiceNumber String
   status        InvoiceStatus @default(DRAFT)
 
-  subtotal      Decimal       @db.Decimal(12, 2)
-  gstAmount     Decimal       @default(0) @db.Decimal(12, 2)
-  totalAmount   Decimal       @db.Decimal(12, 2)
+  subtotal    Decimal @db.Decimal(12, 2)
+  gstAmount   Decimal @default(0) @db.Decimal(12, 2)
+  totalAmount Decimal @db.Decimal(12, 2)
 
-  amountPaid    Decimal       @default(0) @db.Decimal(12, 2)
-  amountDue     Decimal       @db.Decimal(12, 2)
+  amountPaid Decimal @default(0) @db.Decimal(12, 2)
+  amountDue  Decimal @db.Decimal(12, 2)
 
-  issuedAt      DateTime?
-  dueDate       DateTime?
-  paidAt        DateTime?
+  issuedAt DateTime?
+  dueDate  DateTime?
+  paidAt   DateTime?
 
-  pdfUrl        String?
-  pdfPublicId   String?
+  pdfUrl      String?
+  pdfPublicId String?
 
-  notes         String?
+  notes String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1077,16 +1077,16 @@ model Invoice {
 }
 
 model InvoiceLine {
-  id          String  @id @default(cuid())
-  invoiceId   String
-  productId   String?
+  id        String  @id @default(cuid())
+  invoiceId String
+  productId String?
 
   description String
   quantity    Decimal @db.Decimal(12, 3)
   unitPrice   Decimal @db.Decimal(12, 2)
   lineTotal   Decimal @db.Decimal(12, 2)
 
-  gstRate     Decimal @default(18) @db.Decimal(5, 2)
+  gstRate Decimal @default(18) @db.Decimal(5, 2)
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
@@ -1100,24 +1100,24 @@ model InvoiceLine {
 // ============================================================
 
 model SubsidyApplication {
-  id          String        @id @default(cuid())
-  companyId   String
-  customerId  String
+  id         String @id @default(cuid())
+  companyId  String
+  customerId String
 
   applicationNumber String?
   status            SubsidyStatus @default(NOT_STARTED)
 
-  expectedAmount    Decimal       @default(0) @db.Decimal(12, 2)
-  receivedAmount    Decimal       @default(0) @db.Decimal(12, 2)
+  expectedAmount Decimal @default(0) @db.Decimal(12, 2)
+  receivedAmount Decimal @default(0) @db.Decimal(12, 2)
 
-  documentsSubmitted Boolean @default(false)
+  documentsSubmitted Boolean   @default(false)
   submittedAt        DateTime?
   approvedAt         DateTime?
   receivedAt         DateTime?
 
-  authority          String?
-  referenceNumber    String?
-  notes              String?
+  authority       String?
+  referenceNumber String?
+  notes           String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1136,22 +1136,22 @@ model SubsidyApplication {
 // ============================================================
 
 model TimeEntry {
-  id                String   @id @default(cuid())
+  id                String  @id @default(cuid())
   companyId         String
   userId            String
   orderId           String
   installationJobId String?
 
-  startTime         DateTime
-  endTime           DateTime?
-  hours             Decimal? @db.Decimal(8, 2)
+  startTime DateTime
+  endTime   DateTime?
+  hours     Decimal?  @db.Decimal(8, 2)
 
-  hourlyRate        Decimal  @db.Decimal(12, 2)
-  labourCost        Decimal  @default(0) @db.Decimal(12, 2)
+  hourlyRate Decimal @db.Decimal(12, 2)
+  labourCost Decimal @default(0) @db.Decimal(12, 2)
 
-  description       String?
-  approved          Boolean  @default(false)
-  approvedAt        DateTime?
+  description String?
+  approved    Boolean   @default(false)
+  approvedAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1170,16 +1170,16 @@ model TimeEntry {
 }
 
 model CostEntry {
-  id          String   @id @default(cuid())
-  companyId   String
-  orderId     String
+  id        String @id @default(cuid())
+  companyId String
+  orderId   String
 
   category    String
   description String
-  amount      Decimal  @db.Decimal(12, 2)
+  amount      Decimal @db.Decimal(12, 2)
 
-  incurredAt  DateTime @default(now())
-  createdAt   DateTime @default(now())
+  incurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
@@ -1194,20 +1194,20 @@ model CostEntry {
 // ============================================================
 
 model Notification {
-  id        String             @id @default(cuid())
+  id        String  @id @default(cuid())
   companyId String
   userId    String?
 
-  type      NotificationType
-  status    NotificationStatus @default(UNREAD)
+  type   NotificationType
+  status NotificationStatus @default(UNREAD)
 
-  title     String
-  message   String
+  title      String
+  message    String
   entityType String?
   entityId   String?
 
   readAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
 
@@ -1223,17 +1223,17 @@ model Notification {
 // ============================================================
 
 model AuditLog {
-  id        String      @id @default(cuid())
+  id        String  @id @default(cuid())
   companyId String
   actorId   String?
 
-  action    AuditAction
+  action     AuditAction
   entityType String
   entityId   String
 
-  oldValue  Json?
-  newValue  Json?
-  metadata  Json?
+  oldValue Json?
+  newValue Json?
+  metadata Json?
 
   ipAddress String?
   userAgent String?
@@ -1255,16 +1255,16 @@ model AuditLog {
 // ============================================================
 
 model DashboardShareLink {
-  id          String   @id @default(cuid())
-  companyId   String
+  id        String @id @default(cuid())
+  companyId String
 
   // Store a cryptographic hash of the random share token,
   // never the raw token.
-  tokenHash   String   @unique
+  tokenHash String @unique
 
-  createdById String?
-  expiresAt   DateTime
-  revokedAt   DateTime?
+  createdById  String?
+  expiresAt    DateTime
+  revokedAt    DateTime?
   lastAccessAt DateTime?
 
   createdAt DateTime @default(now())
