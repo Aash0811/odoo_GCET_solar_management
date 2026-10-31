@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { inventoryApi } from '../../api';
 import { useAuth } from '../../hooks/useAuth';
+import useDebounce from '../../hooks/useDebounce';
+import Pagination from '../../components/common/Pagination';
 import {
   Sun,
   Battery,
@@ -32,6 +35,9 @@ import {
   Clock,
   QrCode,
   Tag,
+  Wand2,
+  Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
@@ -113,8 +119,10 @@ const emptyProductForm = () => ({
 // Main Component
 // ─────────────────────────────────────────────────────────────
 export default function SolarPackageConfiguratorPage() {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
+  const navigate = useNavigate();
   const isAdmin = role === 'ADMIN';
+  const isSalesman = role === 'SALESMAN' || isAdmin;
 
   const [activeTab, setActiveTab]           = useState('packages');
   const [loading, setLoading]               = useState(true);
@@ -131,6 +139,9 @@ export default function SolarPackageConfiguratorPage() {
   // Product / component state
   const [catFilter, setCatFilter]           = useState('ALL');
   const [searchQuery, setSearchQuery]       = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  const [productPage, setProductPage]       = useState(1);
+  const [productPageSize, setProductPageSize] = useState(10);
   const [productEditor, setProductEditor]   = useState(null); // null | { mode:'create'|'edit', data:... }
   const [prodSaving, setProdSaving]         = useState(false);
   const [showInactive, setShowInactive]     = useState(false);
@@ -168,12 +179,16 @@ export default function SolarPackageConfiguratorPage() {
   const filteredProducts = products.filter(p => {
     if (!showInactive && !p.isActive) return false;
     if (catFilter !== 'ALL' && p.category !== catFilter) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
       return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
     }
     return true;
   });
+
+  useEffect(() => {
+    setProductPage(1);
+  }, [debouncedSearch, catFilter, showInactive]);
 
   // ── BOM cost calculator ─────────────────────────────────
   const calcBomCost = (bomLines, defaultKw) => {
@@ -213,6 +228,34 @@ export default function SolarPackageConfiguratorPage() {
       data: {
         name: template.name,
         description: template.description || '',
+        type: template.type,
+        minCapacityKw: Number(template.minCapacityKw || 1),
+        maxCapacityKw: Number(template.maxCapacityKw || 10),
+        defaultCapacityKw: Number(template.defaultCapacityKw || 3),
+        basePrice: Number(template.basePrice || 0),
+        gstRate: Number(template.gstRate || 12),
+        bomLines,
+      },
+    });
+  };
+
+  // Salesman package customizer
+  const openCustomizePackage = (template) => {
+    const bomLines = (template.bomLines || []).map(l => ({
+      _key: Math.random().toString(36).slice(2),
+      productId: l.productId,
+      quantityPerKw: Number(l.quantityPerKw || 0),
+      fixedQuantity: Number(l.fixedQuantity || 0),
+      qtyMode: Number(l.quantityPerKw || 0) > 0 ? 'perKw' : 'fixed',
+      notes: l.notes || '',
+    }));
+
+    setPackageEditor({
+      mode: 'customize',
+      sourceTemplateId: template.id,
+      data: {
+        name: `Custom - ${template.name}`,
+        description: `Customized proposal package tailored by ${user?.name || 'Sales Representative'}.`,
         type: template.type,
         minCapacityKw: Number(template.minCapacityKw || 1),
         maxCapacityKw: Number(template.maxCapacityKw || 10),
@@ -294,9 +337,9 @@ export default function SolarPackageConfiguratorPage() {
         bomLines,
       };
 
-      if (mode === 'create') {
-        await inventoryApi.createTemplate(payload);
-        showToast('✅ Solar package created successfully!');
+      if (mode === 'create' || mode === 'customize') {
+        const res = await inventoryApi.createTemplate(payload);
+        showToast(mode === 'customize' ? '✨ Custom solar package saved to catalogue!' : '✅ Solar package created successfully!');
       } else {
         await inventoryApi.updateTemplate(templateId, payload);
         showToast('✅ Package configuration updated!');
@@ -304,6 +347,49 @@ export default function SolarPackageConfiguratorPage() {
 
       setPackageEditor(null);
       loadData();
+    } catch (err) {
+      showToast('❌ ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setPkgSaving(false);
+    }
+  };
+
+  const handleSaveAndQuote = async (e) => {
+    if (e) e.preventDefault();
+    setPkgSaving(true);
+    const { data } = packageEditor;
+
+    try {
+      const bomLines = data.bomLines
+        .filter(l => l.productId)
+        .map((l, i) => ({
+          productId: l.productId,
+          quantityPerKw: l.qtyMode === 'perKw' ? Number(l.quantityPerKw) : 0,
+          fixedQuantity: l.qtyMode === 'fixed' ? Number(l.fixedQuantity) : 0,
+          sortOrder: i,
+          notes: l.notes || null,
+        }));
+
+      const payload = {
+        name: data.name.trim(),
+        description: data.description.trim() || null,
+        type: data.type,
+        minCapacityKw: Number(data.minCapacityKw),
+        maxCapacityKw: Number(data.maxCapacityKw),
+        defaultCapacityKw: Number(data.defaultCapacityKw),
+        basePrice: Number(data.basePrice),
+        gstRate: Number(data.gstRate),
+        bomLines,
+      };
+
+      const res = await inventoryApi.createTemplate(payload);
+      showToast('🚀 Custom package saved! Opening in Quotation Studio…');
+      setPackageEditor(null);
+      loadData();
+      const created = res.data?.data;
+      setTimeout(() => {
+        navigate(`/sales/quotes?templateId=${created?.id || ''}&capacity=${data.defaultCapacityKw || 3}`);
+      }, 500);
     } catch (err) {
       showToast('❌ ' + (err.response?.data?.message || err.message), 'error');
     } finally {
@@ -586,11 +672,21 @@ export default function SolarPackageConfiguratorPage() {
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
                       <button
-                        onClick={() => openEditPackage(template)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#FAF6F9] hover:bg-[#714b67] text-[#714b67] hover:text-white border border-[#EBDCE7] rounded-xl text-xs font-bold transition cursor-pointer"
+                        onClick={() => openCustomizePackage(template)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-[#f09e38] to-[#e08920] hover:opacity-95 text-[#241621] rounded-xl text-xs font-black shadow-sm transition cursor-pointer"
+                        title="Salesman Customizer: Customize with your own products & components"
                       >
-                        <Edit2 className="w-3.5 h-3.5" /> Edit
+                        <Wand2 className="w-3.5 h-3.5" /> Customize
                       </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => openEditPackage(template)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#FAF6F9] hover:bg-[#714b67] text-[#714b67] hover:text-white border border-[#EBDCE7] rounded-xl text-xs font-bold transition cursor-pointer"
+                          title="Edit Master Template"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" /> Edit
+                        </button>
+                      )}
                       <button
                         onClick={() => setExpandedCard(isExpanded ? null : template.id)}
                         className="p-1.5 rounded-xl border border-[#EBDCE7] bg-[#FAF6F9] hover:bg-slate-100 text-slate-500 transition cursor-pointer"
@@ -633,12 +729,23 @@ export default function SolarPackageConfiguratorPage() {
                     <div className="mx-5 mb-5 rounded-2xl border border-[#EBDCE7] overflow-hidden text-xs">
                       <div className="bg-[#FAF6F9] px-4 py-2 text-[10px] font-black uppercase tracking-wider text-[#714b67] border-b border-[#EBDCE7] flex justify-between items-center">
                         <span>Bill of Materials ({dKw} kW base)</span>
-                        <button
-                          onClick={() => handleArchivePackage(template)}
-                          className="flex items-center gap-1 text-rose-500 hover:text-rose-700 font-bold text-[10px] cursor-pointer"
-                        >
-                          <Trash2 className="w-3 h-3" /> Archive Package
-                        </button>
+                        <div className="flex items-center gap-2.5">
+                          <button
+                            onClick={() => openCustomizePackage(template)}
+                            className="flex items-center gap-1 text-[#f09e38] hover:text-[#d4821a] font-black text-[10px] cursor-pointer"
+                            title="Customize this BOM"
+                          >
+                            <Sliders className="w-3 h-3" /> Customize Products
+                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleArchivePackage(template)}
+                              className="flex items-center gap-1 text-rose-500 hover:text-rose-700 font-bold text-[10px] cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" /> Archive Package
+                            </button>
+                          )}
+                        </div>
                       </div>
                       {(template.bomLines || []).length === 0 ? (
                         <p className="px-4 py-3 text-slate-400 italic">No BOM lines — click Edit to add components.</p>
@@ -767,7 +874,9 @@ export default function SolarPackageConfiguratorPage() {
                       </td>
                     </tr>
                   )}
-                  {filteredProducts.map(p => {
+                  {filteredProducts
+                    .slice((productPage - 1) * productPageSize, productPage * productPageSize)
+                    .map(p => {
                     const cost = Number(p.costPrice || 0);
                     const sale = Number(p.salePrice || 0);
                     const margin = sale > 0 ? (((sale - cost) / sale) * 100).toFixed(1) : 0;
@@ -883,6 +992,20 @@ export default function SolarPackageConfiguratorPage() {
                 </tbody>
               </table>
             </div>
+
+            <div className="p-3 bg-[#FAF6F9] border-t border-[#EBDCE7]">
+              <Pagination
+                currentPage={productPage}
+                totalItems={filteredProducts.length}
+                pageSize={productPageSize}
+                onPageChange={setProductPage}
+                onPageSizeChange={(newSize) => {
+                  setProductPageSize(newSize);
+                  setProductPage(1);
+                }}
+                pageSizeOptions={[5, 10, 20, 50]}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -896,11 +1019,21 @@ export default function SolarPackageConfiguratorPage() {
             {/* modal header */}
             <div className="flex items-center justify-between p-5 border-b border-[#EBDCE7]">
               <div>
-                <h2 className="text-base font-black text-[#241621]">
-                  {packageEditor.mode === 'create' ? '✨ Create New Solar Package' : `✏️ Edit Package: ${packageEditor.data.name}`}
+                <h2 className="text-base font-black text-[#241621] flex items-center gap-2">
+                  {packageEditor.mode === 'create' ? (
+                    '✨ Create New Solar Package'
+                  ) : packageEditor.mode === 'customize' ? (
+                    <>
+                      <Wand2 className="w-4 h-4 text-[#f09e38]" /> Customize Package: {packageEditor.data.name}
+                    </>
+                  ) : (
+                    `✏️ Edit Package: ${packageEditor.data.name}`
+                  )}
                 </h2>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Configure package info, BOM components, and pricing. All changes save to database.
+                  {packageEditor.mode === 'customize'
+                    ? 'Salesman Customizer: Select, swap, or configure your own hardware & components from the master catalogue for this customer proposal.'
+                    : 'Configure package info, BOM components, and pricing. All changes save to database.'}
                 </p>
               </div>
               <button onClick={() => setPackageEditor(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer">
@@ -1182,23 +1315,54 @@ export default function SolarPackageConfiguratorPage() {
                 </div>
               </section>
 
-              {/* Save buttons */}
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-[#EBDCE7]">
-                <button
-                  type="button"
-                  onClick={() => setPackageEditor(null)}
-                  className="px-5 py-2.5 border border-[#EBDCE7] rounded-xl text-xs font-bold text-slate-600 hover:bg-[#FAF6F9] cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={pkgSaving}
-                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#714b67] to-[#8a5d7e] hover:opacity-95 text-white rounded-xl text-xs font-black shadow-md cursor-pointer disabled:opacity-50"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  {pkgSaving ? 'Saving…' : packageEditor.mode === 'create' ? 'Create Package' : 'Save Changes'}
-                </button>
+              {/* Save / Customization Action buttons */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-[#EBDCE7]">
+                <div className="text-[11px] text-[#714b67] font-semibold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-[#f09e38]" />
+                  <span>
+                    {packageEditor.mode === 'customize'
+                      ? 'Salesman Customizer Mode: Generates a tailored package with your chosen hardware.'
+                      : 'Changes will immediately update the package template catalog.'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setPackageEditor(null)}
+                    className="px-4 py-2.5 border border-[#EBDCE7] rounded-xl text-xs font-bold text-slate-600 hover:bg-[#FAF6F9] cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+
+                  {packageEditor.mode === 'customize' && (
+                    <button
+                      type="button"
+                      onClick={handleSaveAndQuote}
+                      disabled={pkgSaving}
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-[#FAF6F9] hover:bg-[#F5EDF3] border border-[#f09e38] text-[#f09e38] hover:text-[#d4821a] rounded-xl text-xs font-black shadow-xs cursor-pointer transition disabled:opacity-50"
+                      title="Save this custom package and immediately jump to Quote Studio"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" />
+                      Save &amp; Use in Quote →
+                    </button>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={pkgSaving}
+                    className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#714b67] to-[#8a5d7e] hover:opacity-95 text-white rounded-xl text-xs font-black shadow-md cursor-pointer disabled:opacity-50"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    {pkgSaving
+                      ? 'Saving…'
+                      : packageEditor.mode === 'create'
+                      ? 'Create Package'
+                      : packageEditor.mode === 'customize'
+                      ? 'Save as Custom Package'
+                      : 'Save Changes'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

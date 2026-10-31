@@ -296,8 +296,150 @@ function generateCompletionCertificatePdf(job, company) {
   });
 }
 
+function generatePaymentReceiptPdf(payment, order, company) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 50, size: "A4" });
+      const buffers = [];
+
+      doc.on("data", (chunk) => buffers.push(chunk));
+      doc.on("end", () => resolve(Buffer.concat(buffers)));
+      doc.on("error", (err) => reject(err));
+
+      // Header
+      doc
+        .fontSize(22)
+        .fillColor("#714b67")
+        .text((company?.name || "SUNPOWER SOLUTIONS PVT LTD").toUpperCase(), { align: "left" })
+        .fontSize(10)
+        .fillColor("#64748b")
+        .text("Rooftop Solar EPC & Clean Energy Systems", { align: "left" })
+        .text(`GSTIN: ${company?.gstNumber || "36AABCU9603R1ZM"} | Phone: ${company?.phone || "+91 98765 43210"}`)
+        .text(`Address: ${company?.address || "Energy Park, Hyderabad"}`)
+        .moveDown();
+
+      doc
+        .strokeColor("#ebdce7")
+        .lineWidth(1.5)
+        .moveTo(50, doc.y)
+        .lineTo(545, doc.y)
+        .stroke()
+        .moveDown(1);
+
+      // Title & Receipt Badges
+      doc
+        .fontSize(16)
+        .fillColor("#241621")
+        .text(`OFFICIAL PAYMENT RECEIPT`, { align: "center" })
+        .moveDown(0.5);
+
+      const topY = doc.y;
+      doc
+        .fontSize(10)
+        .fillColor("#334155")
+        .text(`Receipt #: ${payment.receiptNumber || `REC-${payment.id.slice(-6).toUpperCase()}`}`, 50, topY)
+        .text(`Date & Time: ${new Date(payment.receivedAt).toLocaleString("en-IN")}`, 50, topY + 15)
+        .text(`Payment Mode: ${payment.method}`, 50, topY + 30)
+        .text(`Reference / UTR: ${payment.transactionRef || "N/A"}`, 50, topY + 45);
+
+      doc
+        .text(`Order #: ${order.orderNumber}`, 320, topY)
+        .text(`Customer: ${order.customer?.name || "Valued Customer"}`, 320, topY + 15)
+        .text(`Phone: ${order.customer?.phone || "N/A"}`, 320, topY + 30)
+        .text(`Capacity: ${order.capacityKw} kW System`, 320, topY + 45);
+
+      doc.y = topY + 70;
+      doc.moveDown(0.5);
+
+      // Receipt Box
+      const boxY = doc.y;
+      doc
+        .rect(50, boxY, 495, 60)
+        .fillAndStroke("#faf6f9", "#ebdce7");
+
+      doc
+        .fontSize(11)
+        .fillColor("#714b67")
+        .text("AMOUNT RECEIVED:", 70, boxY + 15)
+        .fontSize(20)
+        .fillColor("#10b981")
+        .text(`₹ ${Number(payment.amount).toLocaleString("en-IN")}`, 70, boxY + 30);
+
+      doc
+        .fontSize(10)
+        .fillColor("#64748b")
+        .text(`Status: COMPLETED & VERIFIED`, 320, boxY + 25, { align: "right" });
+
+      doc.y = boxY + 75;
+      doc.moveDown(0.5);
+
+      // Order Balance Breakdown
+      const allPayments = order.payments || [payment];
+      const totalPaid = allPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+      const contractValue = Number(order.totalAmount);
+      const remainingBalance = Math.max(0, contractValue - totalPaid);
+
+      doc
+        .fontSize(12)
+        .fillColor("#241621")
+        .text("Contract Financial Ledger", 50, doc.y)
+        .moveDown(0.4);
+
+      const tableTop = doc.y;
+      doc
+        .fontSize(10)
+        .fillColor("#475569")
+        .text("Total Contract Value:", 50, tableTop)
+        .text(`₹ ${contractValue.toLocaleString("en-IN")}`, 400, tableTop, { align: "right" })
+        .text("Total Collected to Date:", 50, tableTop + 18)
+        .text(`₹ ${totalPaid.toLocaleString("en-IN")}`, 400, tableTop + 18, { align: "right" })
+        .text("Remaining Balance Outstanding:", 50, tableTop + 36)
+        .text(`₹ ${remainingBalance.toLocaleString("en-IN")}`, 400, tableTop + 36, { align: "right" });
+
+      doc
+        .strokeColor("#ebdce7")
+        .lineWidth(1)
+        .moveTo(50, tableTop + 56)
+        .lineTo(545, tableTop + 56)
+        .stroke();
+
+      doc.y = tableTop + 70;
+
+      if (payment.notes) {
+        doc
+          .fontSize(9)
+          .fillColor("#64748b")
+          .text(`Notes: ${payment.notes}`)
+          .moveDown(1);
+      }
+
+      // Authorization / Footer
+      doc.moveDown(2);
+      const footerY = doc.y;
+      doc
+        .fontSize(9)
+        .fillColor("#94a3b8")
+        .text("This is an electronically generated receipt issued under the SunPower ERP system.", 50, footerY)
+        .text("Thank you for your business and commitment to clean solar energy!", 50, footerY + 12);
+
+      doc
+        .fontSize(10)
+        .fillColor("#714b67")
+        .text("For SunPower Solutions Pvt Ltd", 360, footerY, { align: "right" })
+        .fontSize(8)
+        .fillColor("#64748b")
+        .text("Authorised Accounts Signatory", 360, footerY + 15, { align: "right" });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 module.exports = {
   generateQuotePdf,
   generateInvoicePdf,
   generateCompletionCertificatePdf,
+  generatePaymentReceiptPdf,
 };

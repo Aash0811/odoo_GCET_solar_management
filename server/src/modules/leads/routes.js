@@ -35,6 +35,12 @@ router.get(
   leadsController.getSalesReps
 );
 
+router.get(
+  "/kanban",
+  requireRole("ADMIN", "SALESMAN", "SUPPORT", "TECHNICIAN"),
+  leadsController.getKanban
+);
+
 router.post(
   "/customer-direct",
   requireRole("ADMIN", "SALESMAN"),

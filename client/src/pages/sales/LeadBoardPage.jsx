@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { leadsApi, surveysApi } from '../../api';
 import { useAuth } from '../../hooks/useAuth';
+import useDebounce from '../../hooks/useDebounce';
 import {
   Plus,
   Search,
@@ -38,6 +39,9 @@ import {
   Check,
   XCircle,
   Share2,
+  ChevronLeft,
+  ChevronRight,
+  Layers,
 } from 'lucide-react';
 
 const STAGES = [
@@ -82,10 +86,27 @@ export default function LeadBoardPage() {
   const [salesReps, setSalesReps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [filterStage, setFilterStage] = useState('ALL');
   const [filterSource, setFilterSource] = useState('ALL');
   const [myLeadsOnly, setMyLeadsOnly] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+
+  // Paginated Kanban State (Reduces data load volume)
+  const [columnLimit, setColumnLimit] = useState(5);
+  const [kanbanStages, setKanbanStages] = useState({
+    NEW: { items: [], total: 0, page: 1, limit: 5, totalPages: 1 },
+    CONTACTED: { items: [], total: 0, page: 1, limit: 5, totalPages: 1 },
+    QUALIFIED: { items: [], total: 0, page: 1, limit: 5, totalPages: 1 },
+    SURVEY_SCHEDULED: { items: [], total: 0, page: 1, limit: 5, totalPages: 1 },
+    SURVEY_DONE: { items: [], total: 0, page: 1, limit: 5, totalPages: 1 },
+    SURVEY_APPROVED: { items: [], total: 0, page: 1, limit: 5, totalPages: 1 },
+    QUOTED: { items: [], total: 0, page: 1, limit: 5, totalPages: 1 },
+    WON: { items: [], total: 0, page: 1, limit: 5, totalPages: 1 },
+    LOST: { items: [], total: 0, page: 1, limit: 5, totalPages: 1 },
+  });
+  const [overallTotalCount, setOverallTotalCount] = useState(0);
+  const [columnLoading, setColumnLoading] = useState({});
 
   // Modals state
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -168,25 +189,88 @@ export default function LeadBoardPage() {
     setTimeout(() => setToastMessage(null), 5000);
   };
 
-  const loadData = async () => {
+  const loadData = async (overrideLimit = null) => {
     try {
       setLoading(true);
-      const [leadsRes, repsRes] = await Promise.all([
-        leadsApi.list({ myLeadsOnly: myLeadsOnly ? 'true' : 'false' }),
+      const limit = overrideLimit || columnLimit;
+      const params = {
+        limit,
+        search: debouncedSearch?.trim() ? debouncedSearch.trim() : undefined,
+        source: filterSource !== 'ALL' ? filterSource : undefined,
+        myLeadsOnly: myLeadsOnly ? 'true' : 'false',
+      };
+
+      const [kanbanRes, repsRes] = await Promise.all([
+        leadsApi.getKanban(params),
         leadsApi.getSalesReps().catch(() => ({ data: { data: [] } })),
       ]);
-      setLeads(leadsRes.data?.data || []);
+
+      const kanbanData = kanbanRes.data?.data || {};
+      if (kanbanData.stages) {
+        setKanbanStages(kanbanData.stages);
+        setOverallTotalCount(kanbanData.totalCount || 0);
+
+        const flatItems = Object.values(kanbanData.stages).flatMap((s) => s.items || []);
+        setLeads(flatItems);
+      }
       setSalesReps(repsRes.data?.data || []);
     } catch (err) {
-      console.error('Failed to load leads:', err);
+      console.error('Failed to load leads kanban:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleColumnPageChange = async (stageId, newPage) => {
+    if (newPage < 1) return;
+    const current = kanbanStages[stageId];
+    if (current && newPage > current.totalPages) return;
+
+    try {
+      setColumnLoading((prev) => ({ ...prev, [stageId]: true }));
+      const params = {
+        stage: stageId,
+        page: newPage,
+        limit: columnLimit,
+        search: debouncedSearch?.trim() ? debouncedSearch.trim() : undefined,
+        source: filterSource !== 'ALL' ? filterSource : undefined,
+        myLeadsOnly: myLeadsOnly ? 'true' : 'false',
+      };
+
+      const res = await leadsApi.getKanban(params);
+      const stagePayload = res.data?.data;
+      if (stagePayload && stagePayload.stage === stageId) {
+        setKanbanStages((prev) => {
+          const updated = {
+            ...prev,
+            [stageId]: {
+              items: stagePayload.items || [],
+              total: stagePayload.total || 0,
+              page: stagePayload.page || 1,
+              limit: stagePayload.limit || columnLimit,
+              totalPages: stagePayload.totalPages || 1,
+            },
+          };
+          const flatItems = Object.values(updated).flatMap((s) => s.items || []);
+          setLeads(flatItems);
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error(`Failed to change page for column ${stageId}:`, err);
+    } finally {
+      setColumnLoading((prev) => ({ ...prev, [stageId]: false }));
+    }
+  };
+
+  const handleColumnLimitChange = (newLimit) => {
+    setColumnLimit(newLimit);
+    loadData(newLimit);
+  };
+
   useEffect(() => {
     loadData();
-  }, [myLeadsOnly]);
+  }, [debouncedSearch, filterSource, myLeadsOnly]);
 
   const handleOpenAssignCustomer = (lead) => {
     setAssignCustomerModalLead(lead);
@@ -490,24 +574,26 @@ export default function LeadBoardPage() {
   };
 
   // ─────────────────────────────────────────────────────────────
-  // FILTERING
+  // PAGINATED STAGE DATA GETTERS & TOTALS
   // ─────────────────────────────────────────────────────────────
-  const filteredLeads = leads.filter((l) => {
-    if (filterStage !== 'ALL' && l.stage !== filterStage) return false;
-    if (filterSource !== 'ALL' && l.source !== filterSource) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const matchName = l.contactName?.toLowerCase().includes(q);
-      const matchPhone = l.phone?.toLowerCase().includes(q);
-      const matchEmail = l.email?.toLowerCase().includes(q);
-      const matchTitle = l.title?.toLowerCase().includes(q);
-      const matchAddress = l.address?.toLowerCase().includes(q);
-      if (!matchName && !matchPhone && !matchEmail && !matchTitle && !matchAddress) return false;
-    }
-    return true;
-  });
+  const getStageData = (stageId) => {
+    return (
+      kanbanStages[stageId] || {
+        items: [],
+        total: 0,
+        page: 1,
+        limit: columnLimit,
+        totalPages: 1,
+      }
+    );
+  };
 
-  const getLeadsByStage = (stageId) => filteredLeads.filter((l) => l.stage === stageId);
+  const getLeadsByStage = (stageId) => getStageData(stageId).items;
+
+  const totalCardsLoaded = Object.values(kanbanStages).reduce(
+    (sum, col) => sum + (col.items ? col.items.length : 0),
+    0
+  );
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-16">
@@ -578,7 +664,13 @@ export default function LeadBoardPage() {
         <div className="p-3.5 rounded-2xl bg-white border border-[#EBDCE7] shadow-xs">
           <span className="text-[10px] font-black uppercase text-[#714b67] tracking-wider">Total Active Enquiries</span>
           <p className="text-xl font-black text-[#241621] mt-0.5">
-            {leads.filter((l) => l.stage !== 'WON' && l.stage !== 'LOST').length}
+            {(kanbanStages.NEW?.total || 0) +
+              (kanbanStages.CONTACTED?.total || 0) +
+              (kanbanStages.QUALIFIED?.total || 0) +
+              (kanbanStages.SURVEY_SCHEDULED?.total || 0) +
+              (kanbanStages.SURVEY_DONE?.total || 0) +
+              (kanbanStages.SURVEY_APPROVED?.total || 0) +
+              (kanbanStages.QUOTED?.total || 0)}
           </p>
           <p className="text-[10px] text-slate-500">In CRM Funnel</p>
         </div>
@@ -586,7 +678,7 @@ export default function LeadBoardPage() {
         <div className="p-3.5 rounded-2xl bg-white border border-[#EBDCE7] shadow-xs">
           <span className="text-[10px] font-black uppercase text-teal-700 tracking-wider">New / In Contact</span>
           <p className="text-xl font-black text-teal-700 mt-0.5">
-            {leads.filter((l) => l.stage === 'NEW' || l.stage === 'CONTACTED').length}
+            {(kanbanStages.NEW?.total || 0) + (kanbanStages.CONTACTED?.total || 0)}
           </p>
           <p className="text-[10px] text-slate-500">Awaiting Assessment</p>
         </div>
@@ -594,7 +686,7 @@ export default function LeadBoardPage() {
         <div className="p-3.5 rounded-2xl bg-white border border-[#EBDCE7] shadow-xs">
           <span className="text-[10px] font-black uppercase text-purple-700 tracking-wider">Qualified (Go)</span>
           <p className="text-xl font-black text-purple-700 mt-0.5">
-            {leads.filter((l) => l.stage === 'QUALIFIED' || l.stage === 'SURVEY_SCHEDULED').length}
+            {(kanbanStages.QUALIFIED?.total || 0) + (kanbanStages.SURVEY_SCHEDULED?.total || 0)}
           </p>
           <p className="text-[10px] text-slate-500">Passed 3 Technical Gates</p>
         </div>
@@ -602,7 +694,7 @@ export default function LeadBoardPage() {
         <div className="p-3.5 rounded-2xl bg-white border border-[#EBDCE7] shadow-xs">
           <span className="text-[10px] font-black uppercase text-emerald-700 tracking-wider">Deals Won</span>
           <p className="text-xl font-black text-emerald-700 mt-0.5">
-            {leads.filter((l) => l.stage === 'WON').length}
+            {kanbanStages.WON?.total || 0}
           </p>
           <p className="text-[10px] text-slate-500">Converted to Sales Order</p>
         </div>
@@ -610,7 +702,7 @@ export default function LeadBoardPage() {
         <div className="p-3.5 rounded-2xl bg-white border border-[#EBDCE7] shadow-xs">
           <span className="text-[10px] font-black uppercase text-rose-700 tracking-wider">Lost / Not Suitable</span>
           <p className="text-xl font-black text-rose-700 mt-0.5">
-            {leads.filter((l) => l.stage === 'LOST').length}
+            {kanbanStages.LOST?.total || 0}
           </p>
           <p className="text-[10px] text-slate-500">Reason Captured &amp; Preserved</p>
         </div>
@@ -674,16 +766,38 @@ export default function LeadBoardPage() {
           </button>
         </div>
 
-        <div className="text-[11px] font-bold text-slate-500">
-          Showing <span className="text-[#241621] font-black">{filteredLeads.length}</span> of{' '}
-          <span className="text-[#241621] font-black">{leads.length}</span> total enquiries
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+          {/* Column Page Size / Limit Controls */}
+          <div className="flex items-center gap-1.5 bg-[#FAF6F9] border border-[#EBDCE7] rounded-xl px-2.5 py-1 text-xs">
+            <span className="text-[11px] font-bold text-slate-500">Per column:</span>
+            {[5, 10, 15, 20].map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => handleColumnLimitChange(size)}
+                className={`px-2 py-0.5 rounded-lg font-black text-xs transition cursor-pointer ${
+                  columnLimit === size
+                    ? 'bg-[#714b67] text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-[#714b67] hover:bg-[#EBDCE7]/50'
+                }`}
+              >
+                {size}
+              </button>
+            ))}
+          </div>
+
+          <div className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+            Showing <span className="text-[#241621] font-black">{totalCardsLoaded}</span> loaded cards of{' '}
+            <span className="text-[#241621] font-black">{overallTotalCount}</span> total enquiries
+          </div>
         </div>
       </div>
 
       {/* Kanban Board Container */}
       <div className="flex gap-4 overflow-x-auto pb-4 snap-x select-none">
-        {STAGES.map((stage) => {
-          const stageLeads = getLeadsByStage(stage.id);
+        {(filterStage === 'ALL' ? STAGES : STAGES.filter((s) => s.id === filterStage)).map((stage) => {
+          const stageData = getStageData(stage.id);
 
           return (
             <div
@@ -694,27 +808,62 @@ export default function LeadBoardPage() {
               <div className="flex items-center justify-between pb-3 mb-2 border-b border-[#EBDCE7] px-1">
                 <div className="flex items-center gap-2">
                   <span
-                    className="w-2.5 h-2.5 rounded-full"
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: stage.accent }}
                   />
                   <h3 className="font-extrabold text-xs text-[#241621] tracking-tight">
                     {stage.title}
                   </h3>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${stage.badgeBg} ${stage.badgeText}`}>
-                  {stageLeads.length}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${stage.badgeBg} ${stage.badgeText}`}>
+                    {stageData.total}
+                  </span>
+                  {stageData.totalPages > 1 && (
+                    <div className="flex items-center bg-white border border-[#EBDCE7] rounded-lg p-0.5 shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => handleColumnPageChange(stage.id, stageData.page - 1)}
+                        disabled={stageData.page <= 1 || columnLoading[stage.id]}
+                        className="p-1 rounded text-slate-500 hover:text-[#714b67] hover:bg-[#FAF6F9] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition"
+                        title="Previous page"
+                      >
+                        <ChevronLeft className="w-3 h-3" />
+                      </button>
+                      <span className="text-[9px] font-black text-slate-700 px-1 select-none">
+                        {stageData.page}/{stageData.totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleColumnPageChange(stage.id, stageData.page + 1)}
+                        disabled={stageData.page >= stageData.totalPages || columnLoading[stage.id]}
+                        className="p-1 rounded text-slate-500 hover:text-[#714b67] hover:bg-[#FAF6F9] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition"
+                        title="Next page"
+                      >
+                        <ChevronRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Cards Container */}
-              <div className="space-y-3 overflow-y-auto pr-1 flex-1">
-                {stageLeads.length === 0 && (
+              <div className="space-y-3 overflow-y-auto pr-1 flex-1 relative min-h-[140px]">
+                {columnLoading[stage.id] && (
+                  <div className="absolute inset-0 bg-[#FAF6F9]/80 backdrop-blur-[1px] flex items-center justify-center rounded-2xl z-10">
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-[#EBDCE7] shadow-sm text-[11px] font-bold text-[#714b67]">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#714b67]" />
+                      Loading...
+                    </div>
+                  </div>
+                )}
+                {stageData.items.length === 0 && !columnLoading[stage.id] && (
                   <div className="h-28 rounded-2xl border-2 border-dashed border-[#EBDCE7] flex items-center justify-center text-slate-400 text-xs italic">
                     No enquiries here
                   </div>
                 )}
 
-                {stageLeads.map((lead) => {
+                {stageData.items.map((lead) => {
                   const srcConfig = SOURCE_CONFIG[lead.source] || SOURCE_CONFIG.WEB_FORM;
                   const SrcIcon = srcConfig.icon;
                   const isFullyQualified =
@@ -973,6 +1122,35 @@ export default function LeadBoardPage() {
                   );
                 })}
               </div>
+
+              {/* Column Footer Pager */}
+              {stageData.totalPages > 1 && (
+                <div className="pt-2.5 mt-2 border-t border-[#EBDCE7] flex items-center justify-between text-[11px] font-bold text-slate-500 px-1">
+                  <span>
+                    {(stageData.page - 1) * stageData.limit + 1}–{Math.min(stageData.page * stageData.limit, stageData.total)} of {stageData.total}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleColumnPageChange(stage.id, stageData.page - 1)}
+                      disabled={stageData.page <= 1 || columnLoading[stage.id]}
+                      className="px-2 py-0.5 rounded-lg bg-white border border-[#EBDCE7] text-slate-700 font-extrabold hover:bg-[#FAF6F9] hover:text-[#714b67] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer transition flex items-center gap-0.5"
+                      title="Previous Page"
+                    >
+                      <ChevronLeft className="w-3 h-3" /> Prev
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleColumnPageChange(stage.id, stageData.page + 1)}
+                      disabled={stageData.page >= stageData.totalPages || columnLoading[stage.id]}
+                      className="px-2 py-0.5 rounded-lg bg-white border border-[#EBDCE7] text-slate-700 font-extrabold hover:bg-[#FAF6F9] hover:text-[#714b67] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer transition flex items-center gap-0.5"
+                      title="Next Page"
+                    >
+                      Next <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

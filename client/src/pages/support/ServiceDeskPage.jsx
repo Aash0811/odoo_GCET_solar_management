@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ticketsApi, warrantyApi } from '../../api';
+import useDebounce from '../../hooks/useDebounce';
+import Pagination from '../../components/common/Pagination';
 import {
   HeadphonesIcon,
   Search,
@@ -16,16 +18,26 @@ import {
   Zap,
   Receipt,
   User,
+  Filter,
 } from 'lucide-react';
 
 export default function ServiceDeskPage() {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Search Warranty States (Rule 8)
+  // Search Warranty States (Rule 8) with Debouncing
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedWarrantyQuery = useDebounce(searchQuery, 350);
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [warrantyPage, setWarrantyPage] = useState(1);
+  const [warrantyPageSize, setWarrantyPageSize] = useState(5);
+
+  // Tickets Filter & Pagination
+  const [ticketFilter, setTicketFilter] = useState('');
+  const debouncedTicketFilter = useDebounce(ticketFilter, 300);
+  const [ticketPage, setTicketPage] = useState(1);
+  const [ticketPageSize, setTicketPageSize] = useState(5);
 
   // Selected Ticket & Actions
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -67,13 +79,38 @@ export default function ServiceDeskPage() {
     loadTickets();
   }, []);
 
+  // Debounced auto-search for warranty
+  useEffect(() => {
+    const runSearch = async () => {
+      const trimmed = debouncedWarrantyQuery.trim();
+      if (!trimmed) {
+        setSearchResults([]);
+        setSearching(false);
+        return;
+      }
+      setSearching(true);
+      try {
+        const res = await warrantyApi.search(trimmed);
+        setSearchResults(res.data?.data || []);
+        setWarrantyPage(1);
+      } catch (err) {
+        console.error('Warranty search failed:', err);
+      } finally {
+        setSearching(false);
+      }
+    };
+    runSearch();
+  }, [debouncedWarrantyQuery]);
+
   const handleSearchWarranty = async (e) => {
     if (e) e.preventDefault();
-    if (!searchQuery.trim()) return;
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
     setSearching(true);
     try {
-      const res = await warrantyApi.search(searchQuery.trim());
+      const res = await warrantyApi.search(trimmed);
       setSearchResults(res.data?.data || []);
+      setWarrantyPage(1);
     } catch (err) {
       console.error(err);
     } finally {
@@ -190,34 +227,49 @@ export default function ServiceDeskPage() {
               <div className="col-span-3">Equipment</div>
               <div className="col-span-3 text-right">Warranty Status</div>
             </div>
-            {searchResults.map((w) => (
-              <div key={w.id} className="p-3 grid grid-cols-12 items-center hover:bg-[#FAF6F9] transition-colors">
-                <div className="col-span-3 font-extrabold text-[#241621] truncate">{w.customer?.name}</div>
-                <div className="col-span-3 font-mono font-black text-[#714B67]">{w.serial}</div>
-                <div className="col-span-3 text-slate-600 truncate font-medium">{w.product?.name}</div>
-                <div className="col-span-3 text-right">
-                  <span
-                    className={`px-3 py-1 rounded-full text-[11px] font-black inline-flex items-center gap-1.5 ${
-                      w.status === 'ACTIVE'
-                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                        : 'bg-rose-100 text-rose-800 border border-rose-300'
-                    }`}
-                  >
-                    {w.status === 'ACTIVE' ? (
-                      <>
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        ACTIVE ({w.daysLeft} days remaining)
-                      </>
-                    ) : (
-                      <>
-                        <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
-                        EXPIRED ({w.expiredDaysAgo} days ago)
-                      </>
-                    )}
-                  </span>
+            {searchResults
+              .slice((warrantyPage - 1) * warrantyPageSize, warrantyPage * warrantyPageSize)
+              .map((w) => (
+                <div key={w.id} className="p-3 grid grid-cols-12 items-center hover:bg-[#FAF6F9] transition-colors">
+                  <div className="col-span-3 font-extrabold text-[#241621] truncate">{w.customer?.name}</div>
+                  <div className="col-span-3 font-mono font-black text-[#714B67]">{w.serial}</div>
+                  <div className="col-span-3 text-slate-600 truncate font-medium">{w.product?.name}</div>
+                  <div className="col-span-3 text-right">
+                    <span
+                      className={`px-3 py-1 rounded-full text-[11px] font-black inline-flex items-center gap-1.5 ${
+                        w.status === 'ACTIVE'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : 'bg-rose-100 text-rose-800 border border-rose-300'
+                      }`}
+                    >
+                      {w.status === 'ACTIVE' ? (
+                        <>
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          ACTIVE ({w.daysLeft} days remaining)
+                        </>
+                      ) : (
+                        <>
+                          <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+                          EXPIRED ({w.expiredDaysAgo} days ago)
+                        </>
+                      )}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            <div className="p-2 bg-[#FAF6F9]">
+              <Pagination
+                currentPage={warrantyPage}
+                totalItems={searchResults.length}
+                pageSize={warrantyPageSize}
+                onPageChange={setWarrantyPage}
+                onPageSizeChange={(size) => {
+                  setWarrantyPageSize(size);
+                  setWarrantyPage(1);
+                }}
+                pageSizeOptions={[5, 10, 20]}
+              />
+            </div>
           </div>
         )}
       </div>
@@ -231,41 +283,100 @@ export default function ServiceDeskPage() {
             <span className="text-[11px] font-bold text-[#b886ad]">Solar Support Desk</span>
           </div>
 
-          <div className="space-y-2.5 overflow-y-auto max-h-[72vh] pr-1">
-            {tickets.map((t) => (
-              <button
-                key={t.id}
-                onClick={async () => {
-                  const res = await ticketsApi.get(t.id);
-                  setSelectedTicket(res.data?.data);
-                }}
-                className={`w-full p-4 rounded-2xl border text-left transition-all cursor-pointer ${
-                  selectedTicket?.id === t.id
-                    ? 'bg-gradient-to-r from-[#F5EDF3] to-white border-[#714B67] shadow-md ring-2 ring-[#714B67]/20'
-                    : 'bg-white border-[#EBDCE7] hover:border-[#b886ad]'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-black text-xs text-[#714B67] font-mono">{t.ticketNumber}</span>
-                  <span
-                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                      t.status === 'RESOLVED'
-                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                        : 'bg-amber-100 text-amber-800 border border-amber-200'
-                    }`}
-                  >
-                    {t.status}
-                  </span>
-                </div>
-                <h3 className="text-xs font-black text-[#241621] line-clamp-1">{t.title}</h3>
-                <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 pt-2 border-t border-[#EBDCE7]/50">
-                  <span className="font-bold text-[#241621] flex items-center gap-1">
-                    <User className="w-3 h-3 text-[#714B67]" /> {t.customer?.name}
-                  </span>
-                  <span className="text-[10px] text-[#b886ad] font-mono">{t.ageDays} days old</span>
-                </div>
-              </button>
-            ))}
+          {/* Quick Ticket Filter with Debounce */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              value={ticketFilter}
+              onChange={(e) => {
+                setTicketFilter(e.target.value);
+                setTicketPage(1);
+              }}
+              placeholder="Filter tickets by title, customer, or ID..."
+              className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-[#EBDCE7] bg-white text-xs text-[#241621] outline-none focus:ring-1 focus:ring-[#714B67]"
+            />
+          </div>
+
+          <div className="space-y-2.5 overflow-y-auto max-h-[64vh] pr-1">
+            {(() => {
+              const filteredTickets = tickets.filter((t) => {
+                if (!debouncedTicketFilter.trim()) return true;
+                const q = debouncedTicketFilter.toLowerCase();
+                return (
+                  t.ticketNumber?.toLowerCase().includes(q) ||
+                  t.title?.toLowerCase().includes(q) ||
+                  t.customer?.name?.toLowerCase().includes(q) ||
+                  t.status?.toLowerCase().includes(q)
+                );
+              });
+
+              if (filteredTickets.length === 0) {
+                return (
+                  <div className="p-6 text-center text-xs text-slate-400 border border-dashed border-[#EBDCE7] rounded-xl">
+                    No tickets match your filter criteria.
+                  </div>
+                );
+              }
+
+              const paginatedTickets = filteredTickets.slice(
+                (ticketPage - 1) * ticketPageSize,
+                ticketPage * ticketPageSize
+              );
+
+              return (
+                <>
+                  {paginatedTickets.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={async () => {
+                        const res = await ticketsApi.get(t.id);
+                        setSelectedTicket(res.data?.data);
+                      }}
+                      className={`w-full p-4 rounded-2xl border text-left transition-all cursor-pointer ${
+                        selectedTicket?.id === t.id
+                          ? 'bg-gradient-to-r from-[#F5EDF3] to-white border-[#714B67] shadow-md ring-2 ring-[#714B67]/20'
+                          : 'bg-white border-[#EBDCE7] hover:border-[#b886ad]'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-black text-xs text-[#714B67] font-mono">{t.ticketNumber}</span>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            t.status === 'RESOLVED'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : 'bg-amber-100 text-amber-800 border border-amber-200'
+                          }`}
+                        >
+                          {t.status}
+                        </span>
+                      </div>
+                      <h3 className="text-xs font-black text-[#241621] line-clamp-1">{t.title}</h3>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 pt-2 border-t border-[#EBDCE7]/50">
+                        <span className="font-bold text-[#241621] flex items-center gap-1">
+                          <User className="w-3 h-3 text-[#714B67]" /> {t.customer?.name}
+                        </span>
+                        <span className="text-[10px] text-[#b886ad] font-mono">{t.ageDays} days old</span>
+                      </div>
+                    </button>
+                  ))}
+
+                  <div className="pt-2">
+                    <Pagination
+                      currentPage={ticketPage}
+                      totalItems={filteredTickets.length}
+                      pageSize={ticketPageSize}
+                      onPageChange={setTicketPage}
+                      onPageSizeChange={(size) => {
+                        setTicketPageSize(size);
+                        setTicketPage(1);
+                      }}
+                      pageSizeOptions={[5, 10, 20]}
+                    />
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
 

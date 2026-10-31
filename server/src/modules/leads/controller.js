@@ -31,6 +31,19 @@ async function listLeads(req, res, next) {
     return res.status(200).json({
       success: true,
       data: leads,
+      pagination: leads.pagination || null,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getKanban(req, res, next) {
+  try {
+    const kanbanData = await leadsService.getKanbanLeads(req.companyId, req.query, req.user);
+    return res.status(200).json({
+      success: true,
+      data: kanbanData,
     });
   } catch (error) {
     next(error);
@@ -195,6 +208,7 @@ async function createCustomerDirect(req, res, next) {
 module.exports = {
   createPublicLead,
   listLeads,
+  getKanban,
   getSalesReps,
   getLead,
   createLead,

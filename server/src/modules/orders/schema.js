@@ -14,7 +14,17 @@ const recordPaymentSchema = z.object({
   technicianId: z.string().optional().nullable(),
 });
 
+const sendReminderSchema = z.object({
+  notes: z.string().optional().nullable(),
+});
+
+const verifyPaymentSchema = z.object({
+  notes: z.string().optional().nullable(),
+});
+
 module.exports = {
   createOrderSchema,
   recordPaymentSchema,
+  sendReminderSchema,
+  verifyPaymentSchema,
 };

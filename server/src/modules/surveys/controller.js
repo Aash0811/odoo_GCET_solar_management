@@ -6,6 +6,7 @@ async function listSurveys(req, res, next) {
     return res.status(200).json({
       success: true,
       data: surveys,
+      pagination: surveys.pagination || null,
     });
   } catch (error) {
     next(error);

@@ -503,6 +503,70 @@ async function acceptQuote(companyId, idOrToken, acceptanceData = {}, req = null
       });
     }
 
+    // Auto-create SalesOrder on Quote Acceptance if one doesn't exist yet
+    const existingOrder = await tx.salesOrder.findFirst({
+      where: { quoteId: quote.id, companyId: quote.companyId },
+    });
+
+    if (!existingOrder) {
+      const orderCount = await tx.salesOrder.count({ where: { companyId: quote.companyId } });
+      const orderNumber = `SO-${new Date().getFullYear()}-${String(orderCount + 1).padStart(4, "0")}`;
+      const totalAmount = Number(quote.totalAmount);
+      const minAdvancePercent = 30;
+      const minAdvanceAmount = Math.round((totalAmount * minAdvancePercent) / 100);
+      const milestone2Amount = Math.round((totalAmount * 50) / 100);
+      const milestone3Amount = totalAmount - minAdvanceAmount - milestone2Amount;
+
+      await tx.salesOrder.create({
+        data: {
+          companyId: quote.companyId,
+          customerId: quote.customerId,
+          quoteId: quote.id,
+          createdById: quote.createdById,
+          orderNumber,
+          status: "PENDING_PAYMENT",
+          capacityKw: quote.capacityKw,
+          revenue: quote.totalAmount,
+          subtotal: quote.subtotal,
+          gstAmount: quote.gstAmount,
+          totalAmount: quote.totalAmount,
+          minAdvancePercent,
+          minAdvanceAmount,
+          milestones: {
+            create: [
+              {
+                companyId: quote.companyId,
+                name: `Advance Booking Deposit (${minAdvancePercent}%)`,
+                stage: "ADVANCE",
+                percentage: minAdvancePercent,
+                amount: minAdvanceAmount,
+                status: "PENDING",
+                notes: "Required before releasing material pick list and installation job.",
+              },
+              {
+                companyId: quote.companyId,
+                name: "Material Delivery at Site (50%)",
+                stage: "DELIVERY",
+                percentage: 50,
+                amount: milestone2Amount,
+                status: "PENDING",
+                notes: "Payable upon dispatch & delivery of hardware to customer site.",
+              },
+              {
+                companyId: quote.companyId,
+                name: "Post-Commissioning & Grid Sync (20%)",
+                stage: "COMMISSIONING",
+                percentage: 20,
+                amount: milestone3Amount,
+                status: "PENDING",
+                notes: "Payable upon successful Discom net-metering & system synchronization.",
+              },
+            ],
+          },
+        },
+      });
+    }
+
     await recordAuditLog(
       {
         companyId: quote.companyId,

@@ -6,6 +6,7 @@ async function listProducts(req, res, next) {
     return res.status(200).json({
       success: true,
       data: products,
+      pagination: products.pagination || null,
     });
   } catch (error) {
     next(error);

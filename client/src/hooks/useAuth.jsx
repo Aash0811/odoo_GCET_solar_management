@@ -69,6 +69,7 @@ export function AuthProvider({ children }) {
     const roleEmails = {
       ADMIN: 'admin@sunpower.com',
       SALESMAN: 'sales@sunpower.com',
+      ACCOUNTANT: 'accountant@sunpower.com',
       WAREHOUSE: 'warehouse@sunpower.com',
       TECHNICIAN: 'tech@sunpower.com',
       SUPPORT: 'support@sunpower.com',

@@ -6,6 +6,7 @@ async function listOrders(req, res, next) {
     return res.status(200).json({
       success: true,
       data: orders,
+      pagination: orders.pagination || null,
     });
   } catch (error) {
     next(error);
@@ -29,7 +30,7 @@ async function createOrder(req, res, next) {
     const order = await ordersService.createOrderFromQuote(req.companyId, req.body, req.user.id, req);
     return res.status(201).json({
       success: true,
-      message: `Sales Order ${order.orderNumber} created. Awaiting payment to confirm.`,
+      message: `Sales Order ${order.orderNumber} created. Awaiting minimum advance payment (${order.minAdvancePercent}%) to confirm and release job.`,
       data: order,
     });
   } catch (error) {
@@ -49,11 +50,69 @@ async function recordPayment(req, res, next) {
 
     return res.status(200).json({
       success: true,
-      message: result.pickList
-        ? `Payment recorded. Order confirmed! Pick list ${result.pickList.pickNumber} and Installation job ${result.installationJob.jobNumber} created.`
-        : "Payment recorded successfully.",
+      message: result.message || "Payment recorded successfully.",
       data: result,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function verifyPayment(req, res, next) {
+  try {
+    const payment = await ordersService.verifyPayment(
+      req.companyId,
+      req.params.id,
+      req.params.paymentId,
+      req.user.id,
+      req.body,
+      req
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Payment ${payment.receiptNumber || payment.id} verified by Accountant.`,
+      data: payment,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function sendReminder(req, res, next) {
+  try {
+    const result = await ordersService.sendPaymentReminder(
+      req.companyId,
+      req.params.id,
+      req.user.id,
+      req.body,
+      req
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function downloadPaymentReceipt(req, res, next) {
+  try {
+    const buffer = await ordersService.getPaymentReceiptPdfBuffer(
+      req.companyId,
+      req.params.id,
+      req.params.paymentId
+    );
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=receipt-${req.params.paymentId}.pdf`
+    );
+    return res.send(buffer);
   } catch (error) {
     next(error);
   }
@@ -64,4 +123,7 @@ module.exports = {
   getOrder,
   createOrder,
   recordPayment,
+  verifyPayment,
+  sendReminder,
+  downloadPaymentReceipt,
 };

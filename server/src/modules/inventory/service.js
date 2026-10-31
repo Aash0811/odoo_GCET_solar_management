@@ -29,23 +29,50 @@ function sanitizePackageTemplate(template, userRole) {
 }
 
 async function getProducts(companyId, filters = {}, userRole = "ADMIN") {
-  const { category, productType, isSerialTracked, lowStock } = filters;
+  const { category, productType, isSerialTracked, lowStock, search, q, page, limit } = filters;
   const where = { companyId, isActive: true };
 
   if (category) where.category = category;
   if (productType) where.productType = productType;
   if (isSerialTracked !== undefined) where.isSerialTracked = isSerialTracked === "true";
 
-  const products = await prisma.product.findMany({
-    where,
-    orderBy: { name: "asc" },
-  });
+  const searchQuery = (search || q || "").trim();
+  if (searchQuery) {
+    where.OR = [
+      { name: { contains: searchQuery, mode: "insensitive" } },
+      { sku: { contains: searchQuery, mode: "insensitive" } },
+      { description: { contains: searchQuery, mode: "insensitive" } },
+      { category: { contains: searchQuery, mode: "insensitive" } },
+    ];
+  }
+
+  const hasPagination = page !== undefined || limit !== undefined;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(limit) || 20));
+  const skip = (pageNum - 1) * pageSize;
+
+  const [total, products] = await prisma.$transaction([
+    prisma.product.count({ where }),
+    prisma.product.findMany({
+      where,
+      ...(hasPagination ? { skip, take: pageSize } : {}),
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   const filtered = lowStock === "true"
     ? products.filter((p) => Number(p.stockQty) <= Number(p.reorderLevel))
     : products;
 
-  return filtered.map((p) => sanitizeProduct(p, userRole));
+  const sanitized = filtered.map((p) => sanitizeProduct(p, userRole));
+  sanitized.pagination = {
+    total,
+    page: pageNum,
+    limit: pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+
+  return sanitized;
 }
 
 async function getProductById(companyId, id, userRole = "ADMIN") {

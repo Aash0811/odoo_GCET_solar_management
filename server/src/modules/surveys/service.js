@@ -29,7 +29,7 @@ function cleanUserNotes(notes) {
 }
 
 async function getSurveys(companyId, filters = {}, user = null) {
-  const { status, surveyedById } = filters;
+  const { status, surveyedById, search, q, page, limit } = filters;
   const where = { companyId };
 
   if (status && status !== "ALL") {
@@ -40,21 +40,43 @@ async function getSurveys(companyId, filters = {}, user = null) {
     where.surveyedById = surveyedById;
   }
 
-  const surveys = await prisma.survey.findMany({
-    where,
-    include: {
-      lead: {
-        include: {
-          customer: true,
-          assignedTo: { select: { id: true, name: true, email: true, phone: true } },
+  const searchQuery = (search || q || "").trim();
+  if (searchQuery) {
+    where.OR = [
+      { notes: { contains: searchQuery, mode: "insensitive" } },
+      { lead: { contactName: { contains: searchQuery, mode: "insensitive" } } },
+      { lead: { phone: { contains: searchQuery, mode: "insensitive" } } },
+      { lead: { email: { contains: searchQuery, mode: "insensitive" } } },
+      { lead: { address: { contains: searchQuery, mode: "insensitive" } } },
+      { lead: { title: { contains: searchQuery, mode: "insensitive" } } },
+      { lead: { customer: { name: { contains: searchQuery, mode: "insensitive" } } } },
+    ];
+  }
+
+  const hasPagination = page !== undefined || limit !== undefined;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(limit) || 20));
+  const skip = (pageNum - 1) * pageSize;
+
+  const [total, surveys] = await prisma.$transaction([
+    prisma.survey.count({ where }),
+    prisma.survey.findMany({
+      where,
+      ...(hasPagination ? { skip, take: pageSize } : {}),
+      include: {
+        lead: {
+          include: {
+            customer: true,
+            assignedTo: { select: { id: true, name: true, email: true, phone: true } },
+          },
+        },
+        photos: {
+          orderBy: { uploadedAt: "desc" },
         },
       },
-      photos: {
-        orderBy: { uploadedAt: "desc" },
-      },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
 
   // Fetch technician names for surveyedById
   const techIds = [...new Set(surveys.map((s) => s.surveyedById).filter(Boolean))];
@@ -67,7 +89,7 @@ async function getSurveys(companyId, filters = {}, user = null) {
       : [];
   const techMap = Object.fromEntries(techUsers.map((t) => [t.id, t]));
 
-  return surveys.map((s) => {
+  const mapped = surveys.map((s) => {
     const metrics = parseSurveyNotes(s.notes);
     return {
       ...s,
@@ -76,6 +98,15 @@ async function getSurveys(companyId, filters = {}, user = null) {
       surveyedBy: s.surveyedById ? techMap[s.surveyedById] || null : null,
     };
   });
+
+  mapped.pagination = {
+    total,
+    page: pageNum,
+    limit: pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+
+  return mapped;
 }
 
 async function getSurveyById(companyId, id) {

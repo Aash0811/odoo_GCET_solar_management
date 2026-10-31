@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { surveysApi, leadsApi } from '../../api';
 import { useAuth } from '../../hooks/useAuth';
+import useDebounce from '../../hooks/useDebounce';
+import Pagination from '../../components/common/Pagination';
 import {
   Compass,
   Calendar,
@@ -28,6 +30,7 @@ import {
   X,
   FileSpreadsheet,
   AlertTriangle,
+  Search,
 } from 'lucide-react';
 
 const ROOF_TYPES = [
@@ -63,6 +66,9 @@ export default function SurveysPage() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(8);
   const [activeTab, setActiveTab] = useState('list'); // 'list' | 'calendar'
   const [toastMessage, setToastMessage] = useState(null);
 
@@ -287,11 +293,11 @@ export default function SurveysPage() {
     }
   };
 
-  // Filtering
+  // Filtering with Debounce
   const filteredSurveys = surveys.filter((s) => {
     if (filterStatus !== 'ALL' && s.status !== filterStatus) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
       const matchClient = s.lead?.contactName?.toLowerCase().includes(q);
       const matchPhone = s.lead?.phone?.toLowerCase().includes(q);
       const matchAddr = s.lead?.address?.toLowerCase().includes(q);
@@ -300,6 +306,10 @@ export default function SurveysPage() {
     }
     return true;
   });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, filterStatus]);
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -490,7 +500,9 @@ export default function SurveysPage() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filteredSurveys.map((survey) => {
+            {filteredSurveys
+              .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+              .map((survey) => {
               const isApproved = survey.status === 'APPROVED';
               const isSubmitted = survey.status === 'SUBMITTED';
               const isScheduled = survey.status === 'SCHEDULED' || survey.status === 'IN_PROGRESS';
@@ -682,6 +694,20 @@ export default function SurveysPage() {
                 </div>
               );
             })}
+          </div>
+
+          <div className="pt-2">
+            <Pagination
+              currentPage={currentPage}
+              totalItems={filteredSurveys.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              pageSizeOptions={[4, 8, 16, 32]}
+            />
           </div>
         </div>
       )}

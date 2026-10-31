@@ -20,10 +20,10 @@ router.patch("/products/:id", requireRole("ADMIN"), validate(updateProductSchema
 
 // Package Templates & Dynamic BOM
 // Read: Everyone authenticated
-// Write: Admin & Manager only
+// Write: Admin & Salesman (Custom packages)
 router.get("/templates", inventoryController.listPackageTemplates);
 router.get("/templates/:id", inventoryController.getPackageTemplate);
-router.post("/templates", requireRole("ADMIN"), inventoryController.createPackageTemplate);
-router.patch("/templates/:id", requireRole("ADMIN"), inventoryController.updatePackageTemplate);
+router.post("/templates", requireRole("ADMIN", "SALESMAN"), inventoryController.createPackageTemplate);
+router.patch("/templates/:id", requireRole("ADMIN", "SALESMAN"), inventoryController.updatePackageTemplate);
 
 module.exports = router;

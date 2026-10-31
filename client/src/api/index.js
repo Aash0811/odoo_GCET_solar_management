@@ -9,6 +9,7 @@ export const authApi = {
 
 export const leadsApi = {
   list: (params) => apiClient.get('/leads', { params }),
+  getKanban: (params) => apiClient.get('/leads/kanban', { params }),
   get: (id) => apiClient.get(`/leads/${id}`),
   create: (data) => apiClient.post('/leads', data),
   submitPublicInquiry: (data) => apiClient.post('/leads/public', data),
@@ -71,6 +72,13 @@ export const ordersApi = {
   get: (id) => apiClient.get(`/orders/${id}`),
   createFromQuote: (data) => apiClient.post('/orders', data),
   recordPayment: (id, data) => apiClient.post(`/orders/${id}/payments`, data),
+  verifyPayment: (orderId, paymentId, data) => apiClient.patch(`/orders/${orderId}/payments/${paymentId}/verify`, data),
+  sendReminder: (id, data) => apiClient.post(`/orders/${id}/reminders`, data),
+  downloadReceipt: (orderId, paymentId) => apiClient.get(`/orders/${orderId}/payments/${paymentId}/receipt`, { responseType: 'blob' }),
+  downloadReceiptUrl: (orderId, paymentId) => {
+    const token = localStorage.getItem('sunpower_token');
+    return `${apiClient.defaults.baseURL}/orders/${orderId}/payments/${paymentId}/receipt${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  },
 };
 
 export const dispatchApi = {
@@ -96,7 +104,7 @@ export const jobsApi = {
 };
 
 export const warrantyApi = {
-  search: (q) => apiClient.get('/warranty/search', { params: { q } }),
+  search: (params) => apiClient.get('/warranty/search', { params: typeof params === 'string' ? { q: params } : params }),
   getExpiring: (days = 60) => apiClient.get('/warranty/expiring', { params: { days } }),
   void: (id, data) => apiClient.patch(`/warranty/${id}/void`, data),
 };

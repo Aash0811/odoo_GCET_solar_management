@@ -101,12 +101,12 @@ export default function DashboardLayout() {
     { label: 'Lead Board (Kanban)', path: '/sales/leads', icon: Kanban, roles: ['ADMIN', 'SALESMAN'] },
     { label: 'Site Surveys', path: '/operations/surveys', icon: Compass, roles: ['ADMIN', 'SALESMAN', 'TECHNICIAN'] },
     { label: 'Quote Builder', path: '/sales/quotes', icon: FileSpreadsheet, roles: ['SALESMAN'] },
-    { label: 'Orders & Payments', path: '/sales/orders', icon: Receipt, roles: ['ADMIN', 'SALESMAN'] },
+    { label: 'Orders & Payments', path: '/sales/orders', icon: Receipt, roles: ['ADMIN', 'SALESMAN', 'ACCOUNTANT'] },
     { label: 'Warehouse & Dispatch', path: '/warehouse/dispatch', icon: Boxes, roles: ['ADMIN', 'WAREHOUSE'] },
     { label: 'Installation Jobs', path: '/technician/jobs', icon: Wrench, roles: ['ADMIN', 'TECHNICIAN'] },
     { label: 'Service Desk & Tickets', path: '/support/tickets', icon: HeadphonesIcon, roles: ['ADMIN', 'SUPPORT'] },
     { label: 'Warranty Lookup', path: '/warranty/lookup', icon: ShieldCheck, roles: ['ADMIN', 'SUPPORT', 'SALESMAN'] },
-    { label: 'Job Costing & Finance', path: '/finance/costing', icon: Coins, roles: ['ADMIN'] },
+    { label: 'Job Costing & Finance', path: '/finance/costing', icon: Coins, roles: ['ADMIN', 'ACCOUNTANT'] },
     { label: 'Subsidy Tracker', path: '/finance/subsidies', icon: BadgePercent, roles: ['ADMIN', 'SALESMAN', 'SUPPORT'] },
     { label: 'Customer Portal', path: '/customer-portal', icon: UserCheck, roles: ['CUSTOMER'] },
   ];
@@ -119,6 +119,7 @@ export default function DashboardLayout() {
     else if (newRole === 'TECHNICIAN') navigate('/technician/jobs');
     else if (newRole === 'WAREHOUSE') navigate('/warehouse/dispatch');
     else if (newRole === 'SUPPORT') navigate('/support/tickets');
+    else if (newRole === 'ACCOUNTANT') navigate('/sales/orders');
     else if (newRole === 'SALESMAN') navigate('/sales/leads');
     else navigate('/admin/dashboard');
   };
@@ -177,6 +178,7 @@ export default function DashboardLayout() {
           >
             <option value="ADMIN">ADMIN (Managing Director)</option>
             <option value="SALESMAN">SALESMAN (Lead Pipeline)</option>
+            <option value="ACCOUNTANT">ACCOUNTANT (Finance & Payments)</option>
             <option value="WAREHOUSE">WAREHOUSE (Stock & Serials)</option>
             <option value="TECHNICIAN">TECHNICIAN (Mobile Form)</option>
             <option value="SUPPORT">SUPPORT (Warranty Desk)</option>
@@ -411,6 +413,7 @@ export default function DashboardLayout() {
             >
               <option value="ADMIN">ADMIN</option>
               <option value="SALESMAN">SALESMAN</option>
+              <option value="ACCOUNTANT">ACCOUNTANT</option>
               <option value="WAREHOUSE">WAREHOUSE</option>
               <option value="TECHNICIAN">TECHNICIAN</option>
               <option value="SUPPORT">SUPPORT</option>

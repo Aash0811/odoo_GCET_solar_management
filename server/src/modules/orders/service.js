@@ -1,33 +1,90 @@
 const prisma = require("../../config/prisma");
 const { recordAuditLog } = require("../../utils/audit");
 const { notifyRole, createNotification } = require("../../utils/notify");
+const { generatePaymentReceiptPdf } = require("../../utils/pdf");
+
+function enrichOrderFinancials(order) {
+  if (!order) return order;
+  const payments = order.payments || [];
+  const totalPaid = payments
+    .filter((p) => p.status === "COMPLETED")
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+  const totalAmount = Number(order.totalAmount || 0);
+  const outstandingBalance = Math.max(0, totalAmount - totalPaid);
+  const percentPaid = totalAmount > 0 ? Number(((totalPaid / totalAmount) * 100).toFixed(1)) : 0;
+  const minAdvancePercent = Number(order.minAdvancePercent || 30);
+  const minAdvanceAmount = Number(order.minAdvanceAmount || (totalAmount * minAdvancePercent) / 100);
+  const isAdvanceSatisfied = totalPaid >= minAdvanceAmount || totalPaid >= totalAmount;
+  const advanceDeficit = Math.max(0, minAdvanceAmount - totalPaid);
+
+  return {
+    ...order,
+    totalPaid,
+    outstandingBalance,
+    percentPaid,
+    minAdvancePercent,
+    minAdvanceAmount,
+    isAdvanceSatisfied,
+    advanceDeficit,
+  };
+}
 
 async function getOrders(companyId, filters = {}) {
-  const { status, customerId } = filters;
+  const { status, customerId, q, search, page, limit } = filters;
   const where = { companyId };
 
   if (status) where.status = status;
   if (customerId) where.customerId = customerId;
 
-  return await prisma.salesOrder.findMany({
-    where,
-    include: {
-      customer: { select: { id: true, name: true, phone: true, email: true } },
-      quote: { select: { id: true, quoteNumber: true, capacityKw: true } },
-      payments: true,
-      pickLists: { select: { id: true, pickNumber: true, status: true } },
-      installationJobs: {
-        select: {
-          id: true,
-          jobNumber: true,
-          status: true,
-          scheduledAt: true,
-          technician: { select: { id: true, name: true } },
+  const searchQuery = (q || search || "").trim();
+  if (searchQuery) {
+    where.OR = [
+      { orderNumber: { contains: searchQuery, mode: "insensitive" } },
+      { customer: { name: { contains: searchQuery, mode: "insensitive" } } },
+      { customer: { phone: { contains: searchQuery, mode: "insensitive" } } },
+      { customer: { email: { contains: searchQuery, mode: "insensitive" } } },
+    ];
+  }
+
+  const hasPagination = page !== undefined || limit !== undefined;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(limit) || 20));
+  const skip = (pageNum - 1) * pageSize;
+
+  const [total, orders] = await prisma.$transaction([
+    prisma.salesOrder.count({ where }),
+    prisma.salesOrder.findMany({
+      where,
+      ...(hasPagination ? { skip, take: pageSize } : {}),
+      include: {
+        customer: { select: { id: true, name: true, phone: true, email: true } },
+        quote: { select: { id: true, quoteNumber: true, capacityKw: true } },
+        payments: { orderBy: { receivedAt: "desc" } },
+        milestones: { orderBy: { createdAt: "asc" } },
+        pickLists: { select: { id: true, pickNumber: true, status: true } },
+        installationJobs: {
+          select: {
+            id: true,
+            jobNumber: true,
+            status: true,
+            scheduledAt: true,
+            technician: { select: { id: true, name: true } },
+          },
         },
       },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+
+  const enriched = orders.map(enrichOrderFinancials);
+  enriched.pagination = {
+    total,
+    page: pageNum,
+    limit: pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+
+  return enriched;
 }
 
 async function getOrderById(companyId, id) {
@@ -43,6 +100,7 @@ async function getOrderById(companyId, id) {
         },
       },
       payments: { orderBy: { receivedAt: "desc" } },
+      milestones: { orderBy: { createdAt: "asc" } },
       pickLists: {
         include: {
           lines: { include: { product: true } },
@@ -74,7 +132,7 @@ async function getOrderById(companyId, id) {
     throw error;
   }
 
-  return order;
+  return enrichOrderFinancials(order);
 }
 
 async function createOrderFromQuote(companyId, data, actorId, req = null) {
@@ -92,10 +150,15 @@ async function createOrderFromQuote(companyId, data, actorId, req = null) {
   // Check if order already exists for this quote
   const existingOrder = await prisma.salesOrder.findFirst({
     where: { quoteId: quote.id, companyId },
+    include: {
+      payments: true,
+      milestones: true,
+      customer: true,
+    },
   });
 
   if (existingOrder) {
-    return existingOrder;
+    return enrichOrderFinancials(existingOrder);
   }
 
   const count = await prisma.salesOrder.count({ where: { companyId } });
@@ -105,6 +168,12 @@ async function createOrderFromQuote(companyId, data, actorId, req = null) {
     actorId ||
     quote.createdById ||
     (await prisma.user.findFirst({ where: { companyId } }))?.id;
+
+  const totalAmount = Number(quote.totalAmount);
+  const minAdvancePercent = Number(data.minAdvancePercent || 30);
+  const minAdvanceAmount = Math.round((totalAmount * minAdvancePercent) / 100);
+  const milestone2Amount = Math.round((totalAmount * 50) / 100);
+  const milestone3Amount = totalAmount - minAdvanceAmount - milestone2Amount;
 
   return await prisma.$transaction(async (tx) => {
     const order = await tx.salesOrder.create({
@@ -120,11 +189,48 @@ async function createOrderFromQuote(companyId, data, actorId, req = null) {
         subtotal: quote.subtotal,
         gstAmount: quote.gstAmount,
         totalAmount: quote.totalAmount,
+        minAdvancePercent,
+        minAdvanceAmount,
         notes: data.notes || null,
+        milestones: {
+          create: [
+            {
+              companyId,
+              name: `Advance Booking Deposit (${minAdvancePercent}%)`,
+              stage: "ADVANCE",
+              percentage: minAdvancePercent,
+              amount: minAdvanceAmount,
+              status: "PENDING",
+              notes: "Required before releasing material pick list and installation job.",
+            },
+            {
+              companyId,
+              name: "Material Delivery at Site (50%)",
+              stage: "DELIVERY",
+              percentage: 50,
+              amount: milestone2Amount,
+              status: "PENDING",
+              notes: "Payable upon dispatch & delivery of hardware to customer site.",
+            },
+            {
+              companyId,
+              name: "Post-Commissioning & Grid Sync (20%)",
+              stage: "COMMISSIONING",
+              percentage: 20,
+              amount: milestone3Amount,
+              status: "PENDING",
+              notes: "Payable upon successful Discom net-metering & system synchronization.",
+            },
+          ],
+        },
+      },
+      include: {
+        milestones: true,
+        customer: true,
       },
     });
 
-    // Update quote status to CONVERTED/ACCEPTED
+    // Update quote status to ACCEPTED
     await tx.quote.update({
       where: { id: quote.id },
       data: { status: "ACCEPTED", acceptedAt: new Date() },
@@ -151,16 +257,19 @@ async function createOrderFromQuote(companyId, data, actorId, req = null) {
       tx
     );
 
-    return order;
+    return enrichOrderFinancials(order);
   });
 }
 
-// Business Rule 4:
-// Order is CONFIRMED only after an advance or full Payment is recorded.
-// In ONE Prisma transaction, confirmation must automatically:
-// - create a PickList (warehouse)
-// - create an InstallationJob (scheduled on technician calendar)
-// - create Notification records for both teams.
+// ─────────────────────────────────────────────────────────────
+// Payment Recording & Rule 4 Automation Engine
+// ─────────────────────────────────────────────────────────────
+// Rule: job is released only after configured minimum advance (e.g. 30%) or full payment
+// On confirmation:
+//   1. Warehouse Pick/Delivery request
+//   2. Installation Job on crew schedule
+//   3. Project/Job-costing record
+// ─────────────────────────────────────────────────────────────
 async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId, req = null) {
   const order = await getOrderById(companyId, orderId);
 
@@ -169,21 +278,96 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
     order.createdById ||
     (await prisma.user.findFirst({ where: { companyId } }))?.id;
 
+  const paymentAmount = Number(paymentData.amount);
+  const existingTotalPaid = Number(order.totalPaid || 0);
+  const newTotalPaid = existingTotalPaid + paymentAmount;
+  const orderTotal = Number(order.totalAmount);
+  const minAdvanceAmount = Number(order.minAdvanceAmount);
+  const isAdvanceSatisfied = newTotalPaid >= minAdvanceAmount || newTotalPaid >= orderTotal;
+
+  // Generate unique sequential receipt number
+  const paymentCount = await prisma.payment.count({ where: { companyId } });
+  const receiptNumber = `REC-${new Date().getFullYear()}-${String(paymentCount + 1).padStart(4, "0")}`;
+
   return await prisma.$transaction(async (tx) => {
     // 1. Create Payment record
     const payment = await tx.payment.create({
       data: {
         companyId,
         orderId,
-        amount: paymentData.amount,
+        amount: paymentAmount,
         method: paymentData.method,
-        transactionRef: paymentData.transactionRef || `TXN-${Date.now()}`,
+        transactionRef: paymentData.transactionRef || `TXN-${Date.now().toString().slice(-8)}`,
         notes: paymentData.notes || null,
+        receiptNumber,
         status: "COMPLETED",
+        isVerified: true,
+        verifiedById: creatorId,
+        verifiedAt: new Date(),
       },
     });
 
-    // 2. If order is already CONFIRMED or later stage, just record payment
+    // 2. Update Milestone status based on cumulative total paid
+    const milestones = await tx.paymentMilestone.findMany({
+      where: { orderId: order.id },
+      orderBy: { createdAt: "asc" },
+    });
+
+    let remainingAllocation = newTotalPaid;
+    for (const m of milestones) {
+      const mAmount = Number(m.amount);
+      if (remainingAllocation >= mAmount) {
+        await tx.paymentMilestone.update({
+          where: { id: m.id },
+          data: {
+            status: "PAID",
+            paidAmount: mAmount,
+            paidAt: m.paidAt || new Date(),
+          },
+        });
+        remainingAllocation -= mAmount;
+      } else if (remainingAllocation > 0) {
+        await tx.paymentMilestone.update({
+          where: { id: m.id },
+          data: {
+            status: "PARTIALLY_PAID",
+            paidAmount: remainingAllocation,
+          },
+        });
+        remainingAllocation = 0;
+      }
+    }
+
+    // 3. RULE CHECK: Job is released only after configured minimum advance (e.g. 30%) or full payment
+    if (!isAdvanceSatisfied && order.status === "PENDING_PAYMENT") {
+      await recordAuditLog(
+        {
+          companyId,
+          actorId: creatorId,
+          action: "PAYMENT_RECORDED",
+          entityType: "Payment",
+          entityId: payment.id,
+          newValue: {
+            amount: payment.amount,
+            method: payment.method,
+            receiptNumber,
+            isAdvanceSatisfied: false,
+            advanceDeficit: minAdvanceAmount - newTotalPaid,
+          },
+          req,
+        },
+        tx
+      );
+
+      return {
+        order: enrichOrderFinancials({ ...order, totalPaid: newTotalPaid }),
+        payment,
+        advanceSatisfied: false,
+        message: `Partial payment of ₹${paymentAmount.toLocaleString("en-IN")} recorded (Receipt: ${receiptNumber}). Minimum advance required for job release is ₹${minAdvanceAmount.toLocaleString("en-IN")} (${order.minAdvancePercent}%). Outstanding advance deficit: ₹${(minAdvanceAmount - newTotalPaid).toLocaleString("en-IN")}.`,
+      };
+    }
+
+    // 4. If order is already CONFIRMED or later stage, just record payment
     if (order.status !== "PENDING_PAYMENT") {
       await recordAuditLog(
         {
@@ -192,16 +376,21 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
           action: "PAYMENT_RECORDED",
           entityType: "Payment",
           entityId: payment.id,
-          newValue: { amount: payment.amount, method: payment.method },
+          newValue: { amount: payment.amount, method: payment.method, receiptNumber },
           req,
         },
         tx
       );
 
-      return { order, payment };
+      return {
+        order: enrichOrderFinancials({ ...order, totalPaid: newTotalPaid }),
+        payment,
+        advanceSatisfied: true,
+        message: `Payment of ₹${paymentAmount.toLocaleString("en-IN")} recorded successfully (Receipt: ${receiptNumber}).`,
+      };
     }
 
-    // 3. Confirm Order
+    // 5. Order is in PENDING_PAYMENT and advance is satisfied -> CONFIRM ORDER & TRIGGER ALL 3 AUTOMATIONS
     const confirmedOrder = await tx.salesOrder.update({
       where: { id: orderId },
       data: {
@@ -210,11 +399,10 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
       },
     });
 
-    // 4. Automatically create PickList for warehouse
+    // Automation 1: Automatically create PickList for warehouse
     const pickListCount = await tx.pickList.count({ where: { companyId } });
     const pickNumber = `PK-${new Date().getFullYear()}-${String(pickListCount + 1).padStart(4, "0")}`;
 
-    // Extract and consolidate product lines from quote by productId to prevent duplicate key constraint
     const productLineMap = new Map();
     for (const line of (order.quote?.lines || [])) {
       if (!line.productId) continue;
@@ -245,11 +433,10 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
       include: { lines: true },
     });
 
-    // 5. Automatically create InstallationJob for technician calendar
+    // Automation 2: Automatically create InstallationJob for technician calendar
     const jobCount = await tx.installationJob.count({ where: { companyId } });
     const jobNumber = `JOB-${new Date().getFullYear()}-${String(jobCount + 1).padStart(4, "0")}`;
 
-    // Default scheduled date = 3 days from confirmation if not provided
     const scheduledDate = paymentData.scheduledInstallDate
       ? new Date(paymentData.scheduledInstallDate)
       : new Date(Date.now() + 3 * 86400000);
@@ -267,8 +454,24 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
       },
     });
 
-    // 6. Create Notifications for both teams (Warehouse & Technician)
-    // Warehouse Notification
+    // Automation 3: Automatically create initial Project/Job-costing record
+    const bomCost = (order.quote?.lines || []).reduce(
+      (sum, l) => sum + Number(l.quantity) * Number(l.unitCost || 0),
+      0
+    );
+    const initialBOMCost = bomCost > 0 ? bomCost : Math.round(orderTotal * 0.65);
+
+    const costEntry = await tx.costEntry.create({
+      data: {
+        companyId,
+        orderId: order.id,
+        category: "ESTIMATED_BOM",
+        description: `Project BOM Hardware & Materials Estimated Cost (${order.capacityKw} kW System)`,
+        amount: initialBOMCost,
+      },
+    });
+
+    // 6. Notifications for Warehouse & Technician
     await notifyRole(
       companyId,
       "WAREHOUSE",
@@ -282,7 +485,6 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
       tx
     );
 
-    // Technician Notification
     if (paymentData.technicianId) {
       await createNotification(
         {
@@ -311,15 +513,15 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
       );
     }
 
-    // 7. Record Audit Logs
+    // 7. Audit Logs
     await recordAuditLog(
       {
         companyId,
-        actorId,
+        actorId: creatorId,
         action: "PAYMENT_RECORDED",
         entityType: "Payment",
         entityId: payment.id,
-        newValue: { amount: payment.amount, method: payment.method },
+        newValue: { amount: payment.amount, method: payment.method, receiptNumber },
         req,
       },
       tx
@@ -328,24 +530,138 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
     await recordAuditLog(
       {
         companyId,
-        actorId,
+        actorId: creatorId,
         action: "STATUS_CHANGE",
         entityType: "SalesOrder",
         entityId: order.id,
         oldValue: { status: "PENDING_PAYMENT" },
-        newValue: { status: "CONFIRMED", pickNumber, jobNumber },
+        newValue: { status: "CONFIRMED", pickNumber, jobNumber, costEntryId: costEntry.id },
         req,
       },
       tx
     );
 
     return {
-      order: confirmedOrder,
+      order: enrichOrderFinancials(confirmedOrder),
       payment,
       pickList,
       installationJob,
+      costEntry,
+      advanceSatisfied: true,
+      message: `Advance payment verified! Order ${order.orderNumber} confirmed. Warehouse picklist, installation job, and job-costing records released.`,
     };
   });
+}
+
+// ─────────────────────────────────────────────────────────────
+// Accountant Verification
+// ─────────────────────────────────────────────────────────────
+async function verifyPayment(companyId, orderId, paymentId, actorId, data = {}, req = null) {
+  const payment = await prisma.payment.findFirst({
+    where: { id: paymentId, orderId, companyId },
+  });
+
+  if (!payment) {
+    const error = new Error("Payment record not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const updated = await prisma.payment.update({
+    where: { id: paymentId },
+    data: {
+      isVerified: true,
+      verifiedById: actorId,
+      verifiedAt: new Date(),
+      notes: data.notes ? `${payment.notes ? payment.notes + " | " : ""}Verified: ${data.notes}` : payment.notes,
+    },
+  });
+
+  await recordAuditLog(
+    {
+      companyId,
+      actorId,
+      action: "UPDATE",
+      entityType: "Payment",
+      entityId: paymentId,
+      newValue: { isVerified: true, verifiedById: actorId },
+      metadata: { action: "PAYMENT_VERIFIED" },
+      req,
+    }
+  );
+
+  return updated;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Payment Reminders
+// ─────────────────────────────────────────────────────────────
+async function sendPaymentReminder(companyId, orderId, actorId, data = {}, req = null) {
+  const order = await getOrderById(companyId, orderId);
+
+  const updated = await prisma.salesOrder.update({
+    where: { id: orderId },
+    data: { lastReminderSentAt: new Date() },
+  });
+
+  // Notify customer if customer account exists
+  const customerUser = await prisma.user.findFirst({
+    where: { companyId, phone: order.customer.phone },
+  });
+
+  if (customerUser) {
+    await createNotification({
+      companyId,
+      userId: customerUser.id,
+      type: "PAYMENT_REMINDER",
+      title: "Friendly Payment Reminder",
+      message: `Payment reminder for Order #${order.orderNumber}. Outstanding balance: ₹${order.outstandingBalance.toLocaleString("en-IN")}. Please clear pending milestone dues.`,
+      entityType: "SalesOrder",
+      entityId: orderId,
+    });
+  }
+
+  await recordAuditLog(
+    {
+      companyId,
+      actorId,
+      action: "UPDATE",
+      entityType: "SalesOrder",
+      entityId: orderId,
+      newValue: { lastReminderSentAt: updated.lastReminderSentAt, notes: data.notes },
+      metadata: { action: "PAYMENT_REMINDER_SENT" },
+      req,
+    }
+  );
+
+  return {
+    success: true,
+    message: `Payment reminder successfully dispatched to ${order.customer.name} (${order.customer.phone}). Outstanding balance: ₹${order.outstandingBalance.toLocaleString("en-IN")}.`,
+    lastReminderSentAt: updated.lastReminderSentAt,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// PDF Payment Receipt Generator
+// ─────────────────────────────────────────────────────────────
+async function getPaymentReceiptPdfBuffer(companyId, orderId, paymentId) {
+  const payment = await prisma.payment.findFirst({
+    where: { id: paymentId, orderId, companyId },
+    include: { milestone: true },
+  });
+
+  if (!payment) {
+    const error = new Error("Payment record not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const order = await getOrderById(companyId, orderId);
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+  });
+
+  return await generatePaymentReceiptPdf(payment, order, company);
 }
 
 module.exports = {
@@ -353,4 +669,7 @@ module.exports = {
   getOrderById,
   createOrderFromQuote,
   recordPaymentAndConfirm,
+  verifyPayment,
+  sendPaymentReminder,
+  getPaymentReceiptPdfBuffer,
 };

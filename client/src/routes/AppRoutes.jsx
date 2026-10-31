@@ -73,6 +73,10 @@ export default function AppRoutes() {
           {/* Sales & Admin routes */}
           <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SALESMAN']} />}>
             <Route path="/sales/leads" element={<LeadBoardPage />} />
+          </Route>
+
+          {/* Orders & Payments (Admin, Salesman, Accountant) */}
+          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SALESMAN', 'ACCOUNTANT']} />}>
             <Route path="/sales/orders" element={<OrderPaymentsPage />} />
           </Route>
 

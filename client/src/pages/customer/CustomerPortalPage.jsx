@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SignatureCanvas from 'react-signature-canvas';
-import { customerPortalApi, quotesApi, jobsApi, leadsApi } from '../../api';
+import { customerPortalApi, quotesApi, jobsApi, leadsApi, ordersApi } from '../../api';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -512,6 +512,54 @@ export default function CustomerPortalPage() {
                         </span>
                       )}
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Receipts & Milestone Ledger */}
+              {activeOrder.payments && activeOrder.payments.length > 0 && (
+                <div className="p-4 rounded-2xl bg-[#FAF6F9] border border-[#EBDCE7] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black text-[#714B67] uppercase tracking-wide flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-[#f09e38]" /> Payment Receipts & Ledger
+                    </h3>
+                    <span className="text-[11px] font-bold text-slate-500">
+                      Collected: ₹{activeOrder.payments.reduce((s, p) => s + Number(p.amount), 0).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-[#EBDCE7] bg-white">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-[#FAF6F9] text-[#714B67] font-black text-[10px] uppercase border-b border-[#EBDCE7]">
+                        <tr>
+                          <th className="py-2 px-3">Receipt #</th>
+                          <th className="py-2 px-3">Date</th>
+                          <th className="py-2 px-3">Mode</th>
+                          <th className="py-2 px-3">Amount (₹)</th>
+                          <th className="py-2 px-3 text-right">Receipt</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#EBDCE7]">
+                        {activeOrder.payments.map((p) => (
+                          <tr key={p.id}>
+                            <td className="py-2 px-3 font-mono font-bold text-[#714B67]">{p.receiptNumber || `REC-${p.id.slice(-6).toUpperCase()}`}</td>
+                            <td className="py-2 px-3 text-slate-500">{new Date(p.receivedAt).toLocaleDateString()}</td>
+                            <td className="py-2 px-3 font-semibold">{p.method}</td>
+                            <td className="py-2 px-3 font-mono font-bold text-emerald-700">₹{Number(p.amount).toLocaleString('en-IN')}</td>
+                            <td className="py-2 px-3 text-right">
+                              <a
+                                href={ordersApi.downloadReceiptUrl(activeOrder.id, p.id)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#FAF6F9] hover:bg-[#F5EDF3] border border-[#EBDCE7] text-[#714B67] text-[11px] font-bold cursor-pointer"
+                              >
+                                <Download className="w-3 h-3 text-[#f09e38]" /> PDF Receipt
+                              </a>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}

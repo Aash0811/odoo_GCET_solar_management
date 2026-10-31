@@ -47,6 +47,7 @@ export default function LoginPage() {
   const demoRoles = [
     { role: 'ADMIN', name: 'Director', email: 'admin@sunpower.com', path: '/admin/dashboard' },
     { role: 'SALESMAN', name: 'Sales Lead', email: 'sales@sunpower.com', path: '/sales/leads' },
+    { role: 'ACCOUNTANT', name: 'Accountant', email: 'accountant@sunpower.com', path: '/sales/orders' },
     { role: 'WAREHOUSE', name: 'Stock & Serials', email: 'warehouse@sunpower.com', path: '/warehouse/dispatch' },
     { role: 'TECHNICIAN', name: 'Mobile Form', email: 'tech@sunpower.com', path: '/technician/jobs' },
     { role: 'SUPPORT', name: 'Service Desk', email: 'support@sunpower.com', path: '/support/tickets' },

@@ -1,40 +1,53 @@
 const prisma = require("../../config/prisma");
 const { recordAuditLog } = require("../../utils/audit");
 
-async function searchWarranties(companyId, query) {
-  const q = query.trim();
+async function searchWarranties(companyId, query, pagination = {}) {
+  const q = query ? query.trim() : "";
+  const page = Math.max(1, Number(pagination.page) || 1);
+  const limit = Math.min(100, Math.max(1, Number(pagination.limit) || 20));
+  const skip = (page - 1) * limit;
 
-  // Search by serial number OR customer phone OR customer name
-  const warranties = await prisma.warranty.findMany({
-    where: {
-      companyId,
-      OR: [
-        { serialNumber: { serial: { contains: q, mode: "insensitive" } } },
-        { customer: { phone: { contains: q, mode: "insensitive" } } },
-        { customer: { name: { contains: q, mode: "insensitive" } } },
-      ],
-    },
-    include: {
-      customer: {
-        select: { id: true, name: true, phone: true, email: true, address: true },
-      },
-      serialNumber: {
-        include: {
-          product: {
-            select: { id: true, name: true, sku: true, category: true, warrantyYears: true },
-          },
-          order: {
-            select: { id: true, orderNumber: true, confirmedAt: true },
+  const where = {
+    companyId,
+    ...(q
+      ? {
+          OR: [
+            { serialNumber: { serial: { contains: q, mode: "insensitive" } } },
+            { customer: { phone: { contains: q, mode: "insensitive" } } },
+            { customer: { name: { contains: q, mode: "insensitive" } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [total, warranties] = await prisma.$transaction([
+    prisma.warranty.count({ where }),
+    prisma.warranty.findMany({
+      where,
+      skip,
+      take: limit,
+      include: {
+        customer: {
+          select: { id: true, name: true, phone: true, email: true, address: true },
+        },
+        serialNumber: {
+          include: {
+            product: {
+              select: { id: true, name: true, sku: true, category: true, warrantyYears: true },
+            },
+            order: {
+              select: { id: true, orderNumber: true, confirmedAt: true },
+            },
           },
         },
       },
-    },
-    orderBy: { endDate: "desc" },
-  });
+      orderBy: { endDate: "desc" },
+    }),
+  ]);
 
   const now = Date.now();
 
-  return warranties.map((w) => {
+  const formatted = warranties.map((w) => {
     const endMs = new Date(w.endDate).getTime();
     const diffDays = Math.ceil((endMs - now) / 86400000);
     const isExpired = diffDays <= 0 || w.status === "EXPIRED";
@@ -56,6 +69,15 @@ async function searchWarranties(companyId, query) {
       voidReason: w.voidReason,
     };
   });
+
+  formatted.pagination = {
+    total,
+    page,
+    limit,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  };
+
+  return formatted;
 }
 
 async function getExpiringWarranties(companyId, days = 60) {

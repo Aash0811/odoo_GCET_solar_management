@@ -4,7 +4,7 @@ const { recordAuditLog } = require("../../utils/audit");
 const { createNotification } = require("../../utils/notify");
 
 async function getLeads(companyId, filters = {}, currentUser = null) {
-  const { stage, assignedToId, includeArchived = "false", search, source, myLeadsOnly } = filters;
+  const { stage, assignedToId, includeArchived = "false", search, source, myLeadsOnly, page, limit, q } = filters;
 
   const where = {
     companyId,
@@ -29,39 +29,193 @@ async function getLeads(companyId, filters = {}, currentUser = null) {
     where.assignedToId = assignedToId;
   }
 
-  if (search) {
+  const searchQuery = (search || q || "").trim();
+  if (searchQuery) {
     where.OR = [
-      { title: { contains: search, mode: "insensitive" } },
-      { contactName: { contains: search, mode: "insensitive" } },
-      { phone: { contains: search, mode: "insensitive" } },
-      { email: { contains: search, mode: "insensitive" } },
-      { address: { contains: search, mode: "insensitive" } },
-      { notes: { contains: search, mode: "insensitive" } },
+      { title: { contains: searchQuery, mode: "insensitive" } },
+      { contactName: { contains: searchQuery, mode: "insensitive" } },
+      { phone: { contains: searchQuery, mode: "insensitive" } },
+      { email: { contains: searchQuery, mode: "insensitive" } },
+      { address: { contains: searchQuery, mode: "insensitive" } },
+      { notes: { contains: searchQuery, mode: "insensitive" } },
     ];
   }
 
-  return await prisma.lead.findMany({
-    where,
-    include: {
-      assignedTo: {
-        select: { id: true, name: true, email: true, phone: true, role: true },
+  const hasPagination = page !== undefined || limit !== undefined;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(limit) || 20));
+  const skip = (pageNum - 1) * pageSize;
+
+  const [total, leads] = await prisma.$transaction([
+    prisma.lead.count({ where }),
+    prisma.lead.findMany({
+      where,
+      ...(hasPagination ? { skip, take: pageSize } : {}),
+      include: {
+        assignedTo: {
+          select: { id: true, name: true, email: true, phone: true, role: true },
+        },
+        customer: {
+          select: { id: true, name: true, phone: true, email: true, city: true },
+        },
+        surveys: {
+          select: { id: true, status: true, scheduledAt: true, approvedAt: true },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+        quotes: {
+          select: { id: true, quoteNumber: true, status: true, totalAmount: true },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
       },
-      customer: {
-        select: { id: true, name: true, phone: true, email: true, city: true },
-      },
-      surveys: {
-        select: { id: true, status: true, scheduledAt: true, approvedAt: true },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-      },
-      quotes: {
-        select: { id: true, quoteNumber: true, status: true, totalAmount: true },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-      },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+
+  leads.pagination = {
+    total,
+    page: pageNum,
+    limit: pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+
+  return leads;
+}
+
+async function getKanbanLeads(companyId, filters = {}, currentUser = null) {
+  const { stage, assignedToId, includeArchived = "false", search, source, myLeadsOnly, page = 1, limit = 5, q } = filters;
+
+  const baseWhere = {
+    companyId,
+  };
+
+  if (includeArchived !== "true") {
+    baseWhere.archivedAt = null;
+  }
+
+  if (source && source !== "ALL") {
+    baseWhere.source = source;
+  }
+
+  if (myLeadsOnly === "true" && currentUser?.id) {
+    baseWhere.assignedToId = currentUser.id;
+  } else if (assignedToId && assignedToId !== "ALL") {
+    baseWhere.assignedToId = assignedToId;
+  }
+
+  const searchQuery = (search || q || "").trim();
+  if (searchQuery) {
+    baseWhere.OR = [
+      { title: { contains: searchQuery, mode: "insensitive" } },
+      { contactName: { contains: searchQuery, mode: "insensitive" } },
+      { phone: { contains: searchQuery, mode: "insensitive" } },
+      { email: { contains: searchQuery, mode: "insensitive" } },
+      { address: { contains: searchQuery, mode: "insensitive" } },
+      { notes: { contains: searchQuery, mode: "insensitive" } },
+    ];
+  }
+
+  const standardIncludes = {
+    assignedTo: {
+      select: { id: true, name: true, email: true, phone: true, role: true },
     },
-    orderBy: { createdAt: "desc" },
-  });
+    customer: {
+      select: { id: true, name: true, phone: true, email: true, city: true },
+    },
+    surveys: {
+      select: { id: true, status: true, scheduledAt: true, approvedAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+    },
+    quotes: {
+      select: { id: true, quoteNumber: true, status: true, totalAmount: true },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+    },
+  };
+
+  const STAGES = [
+    "NEW",
+    "CONTACTED",
+    "QUALIFIED",
+    "SURVEY_SCHEDULED",
+    "SURVEY_DONE",
+    "SURVEY_APPROVED",
+    "QUOTED",
+    "WON",
+    "LOST",
+  ];
+
+  const pageSize = Math.min(50, Math.max(1, Number(limit) || 5));
+  const pageNum = Math.max(1, Number(page) || 1);
+
+  // If a single stage is requested (e.g. column-level page turn)
+  if (stage && stage !== "ALL" && STAGES.includes(stage)) {
+    const stageWhere = { ...baseWhere, stage };
+    const skip = (pageNum - 1) * pageSize;
+
+    const [total, items] = await prisma.$transaction([
+      prisma.lead.count({ where: stageWhere }),
+      prisma.lead.findMany({
+        where: stageWhere,
+        skip,
+        take: pageSize,
+        include: standardIncludes,
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+
+    return {
+      stage,
+      items,
+      total,
+      page: pageNum,
+      limit: pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  }
+
+  // Otherwise, fetch all stages with parallel batch queries in a single transaction
+  const queries = [];
+  for (const s of STAGES) {
+    const sWhere = { ...baseWhere, stage: s };
+    queries.push(prisma.lead.count({ where: sWhere }));
+    queries.push(
+      prisma.lead.findMany({
+        where: sWhere,
+        skip: 0,
+        take: pageSize,
+        include: standardIncludes,
+        orderBy: { createdAt: "desc" },
+      })
+    );
+  }
+
+  const results = await prisma.$transaction(queries);
+  const stageData = {};
+  let overallTotal = 0;
+
+  for (let i = 0; i < STAGES.length; i++) {
+    const s = STAGES[i];
+    const total = results[i * 2];
+    const items = results[i * 2 + 1];
+    overallTotal += total;
+
+    stageData[s] = {
+      items,
+      total,
+      page: 1,
+      limit: pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    };
+  }
+
+  return {
+    stages: stageData,
+    totalCount: overallTotal,
+    limit: pageSize,
+  };
 }
 
 async function getLeadById(companyId, id) {
@@ -1002,6 +1156,7 @@ async function createDirectCustomer(companyId, data = {}, actorId, req = null) {
 
 module.exports = {
   getLeads,
+  getKanbanLeads,
   getLeadById,
   getSalesReps,
   createLead,

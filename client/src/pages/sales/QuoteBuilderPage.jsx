@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { quotesApi, inventoryApi, leadsApi, ordersApi } from '../../api';
 import { useAuth } from '../../hooks/useAuth';
 import {
@@ -26,15 +27,20 @@ import {
   Lock,
   CheckCircle2,
   XCircle,
+  Search,
+  Wand2,
+  X,
 } from 'lucide-react';
 
 export default function QuoteBuilderPage() {
   const { role } = useAuth();
+  const navigate = useNavigate();
   const isAdmin = role === 'ADMIN';
 
   const [quotes, setQuotes] = useState([]);
   const [approvedLeads, setApprovedLeads] = useState([]);
   const [templates, setTemplates] = useState([]);
+  const [catalogProducts, setCatalogProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Form states
@@ -51,17 +57,36 @@ export default function QuoteBuilderPage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [copiedId, setCopiedId] = useState(null);
 
+  // Custom component picker modal
+  const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const [selectedAddProductId, setSelectedAddProductId] = useState('');
+  const [addQty, setAddQty] = useState(1);
+
   const loadData = async () => {
     try {
-      const [quotesRes, leadsRes, tmplRes] = await Promise.all([
+      const [quotesRes, leadsRes, tmplRes, prodRes] = await Promise.all([
         quotesApi.list(),
         leadsApi.list({ stage: 'SURVEY_APPROVED' }),
         inventoryApi.getTemplates(),
+        inventoryApi.getProducts(),
       ]);
       setQuotes(quotesRes.data?.data || []);
       setApprovedLeads(leadsRes.data?.data || []);
       setTemplates(tmplRes.data?.data || []);
-      if (tmplRes.data?.data?.length > 0) {
+      setCatalogProducts(prodRes.data?.data || []);
+
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlTemplateId = searchParams.get('templateId');
+      const urlCapacity = searchParams.get('capacity');
+
+      if (urlCapacity) {
+        setCapacityKw(Number(urlCapacity));
+      }
+
+      if (urlTemplateId && tmplRes.data?.data?.some((t) => t.id === urlTemplateId)) {
+        setSelectedTemplateId(urlTemplateId);
+      } else if (tmplRes.data?.data?.length > 0) {
         setSelectedTemplateId(tmplRes.data.data[0].id);
       }
     } catch (err) {
@@ -137,6 +162,32 @@ export default function QuoteBuilderPage() {
 
   const handleRemoveLine = (index) => {
     setBomLines(bomLines.filter((_, i) => i !== index));
+  };
+
+  const handleAddProductToQuote = () => {
+    if (!selectedAddProductId) return;
+    const prod = catalogProducts.find((p) => p.id === selectedAddProductId);
+    if (!prod) return;
+
+    const qty = Math.max(1, Number(addQty) || 1);
+    const unitPrice = Number(prod.salePrice || 0);
+
+    const newLine = {
+      productId: prod.id,
+      description: `${prod.name} (${prod.sku})`,
+      quantity: qty,
+      unitPrice,
+      unitCost: Number(prod.costPrice || 0),
+      gstRate: Number(prod.gstRate || 18),
+      lineTotal: qty * unitPrice,
+      sortOrder: bomLines.length,
+    };
+
+    setBomLines([...bomLines, newLine]);
+    setShowAddProductModal(false);
+    setSelectedAddProductId('');
+    setAddQty(1);
+    setProductSearch('');
   };
 
   // Financial calculations
@@ -351,20 +402,39 @@ export default function QuoteBuilderPage() {
             {/* Template Selector & Visual Capacity Slider */}
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <label className="font-extrabold text-[#241621] mb-1.5 block">
-                  2. Solar Package Template
-                </label>
-                <select
-                  value={selectedTemplateId}
-                  onChange={(e) => setSelectedTemplateId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] bg-white font-semibold text-[#241621] focus:ring-2 focus:ring-[#714B67] outline-none shadow-xs"
-                >
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="font-extrabold text-[#241621] block">
+                    2. Solar Package Template
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/admin/packages')}
+                    className="text-[10px] font-bold text-[#f09e38] hover:text-[#d4821a] flex items-center gap-1 cursor-pointer"
+                  >
+                    <Sliders className="w-3 h-3" /> Customize in Catalog →
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedTemplateId}
+                    onChange={(e) => setSelectedTemplateId(e.target.value)}
+                    className="flex-1 p-2.5 rounded-xl border border-[#EBDCE7] bg-white font-semibold text-[#241621] focus:ring-2 focus:ring-[#714B67] outline-none shadow-xs"
+                  >
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/admin/packages')}
+                    className="px-3 py-2 bg-gradient-to-r from-[#f09e38] to-[#e08920] hover:opacity-95 text-[#241621] rounded-xl text-xs font-black transition flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer"
+                    title="Customize Package Template in Catalog"
+                  >
+                    <Wand2 className="w-3.5 h-3.5" /> Customize
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -425,17 +495,27 @@ export default function QuoteBuilderPage() {
                 <span className="font-extrabold text-[#241621] flex items-center gap-1.5">
                   <Calculator className="w-3.5 h-3.5 text-[#714B67]" /> Bill of Materials (BOM) Auto-Expansion
                 </span>
-                <span className="text-[11px] font-bold text-[#b886ad]">
-                  Rule 3: Dynamically scaled by {capacityKw} kW
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddProductModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-[#f09e38] to-[#e08920] hover:opacity-95 text-[#241621] rounded-lg text-xs font-black shadow-xs transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Component
+                  </button>
+                  <span className="text-[11px] font-bold text-[#b886ad]">
+                    Rule 3: Scaled by {capacityKw} kW
+                  </span>
+                </div>
               </div>
 
               <div className="border border-[#EBDCE7] rounded-2xl overflow-hidden divide-y divide-[#EBDCE7]/60 shadow-xs bg-white">
                 <div className="bg-[#F5EDF3] p-2.5 grid grid-cols-12 gap-2 font-black text-[10px] text-[#714B67] uppercase tracking-wider">
-                  <div className="col-span-6">Component Description</div>
+                  <div className="col-span-5">Component Description</div>
                   <div className="col-span-2 text-right">Qty</div>
                   <div className="col-span-2 text-right">Unit Rate (₹)</div>
                   <div className="col-span-2 text-right">Line Total (₹)</div>
+                  <div className="col-span-1 text-center">Action</div>
                 </div>
 
                 {bomLines.map((line, idx) => (
@@ -444,7 +524,7 @@ export default function QuoteBuilderPage() {
                       type="text"
                       value={line.description}
                       onChange={(e) => handleUpdateLine(idx, 'description', e.target.value)}
-                      className="col-span-6 p-1.5 rounded-lg border border-transparent hover:border-[#EBDCE7] focus:border-[#714B67] font-semibold text-[#241621] truncate outline-none"
+                      className="col-span-5 p-1.5 rounded-lg border border-transparent hover:border-[#EBDCE7] focus:border-[#714B67] font-semibold text-[#241621] truncate outline-none"
                     />
                     <input
                       type="number"
@@ -461,6 +541,16 @@ export default function QuoteBuilderPage() {
                     />
                     <div className="col-span-2 text-right font-black text-[#714B67] pr-1">
                       ₹{line.lineTotal.toLocaleString()}
+                    </div>
+                    <div className="col-span-1 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveLine(idx)}
+                        className="p-1 rounded text-slate-300 hover:text-rose-600 transition cursor-pointer"
+                        title="Remove Component"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mx-auto" />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -752,6 +842,102 @@ export default function QuoteBuilderPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal: Add Custom Component from Catalog */}
+      {showAddProductModal && (
+        <div className="fixed inset-0 bg-[#22151F]/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-[#EBDCE7] text-xs space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EBDCE7]">
+              <div className="flex items-center gap-2">
+                <Plus className="w-5 h-5 text-[#f09e38]" />
+                <div>
+                  <h3 className="text-base font-black text-[#241621]">Add Component from Catalogue</h3>
+                  <p className="text-[11px] text-slate-500">Salesman: Select any panel, inverter, battery or cable to add to this proposal.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowAddProductModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Search input */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search component name, category, or SKU..."
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#FAF6F9] border border-[#EBDCE7] text-xs font-semibold outline-none focus:ring-1 focus:ring-[#714B67]"
+              />
+            </div>
+
+            {/* Product selection list */}
+            <div className="max-h-60 overflow-y-auto space-y-1.5 divide-y divide-[#EBDCE7]/50 border border-[#EBDCE7] rounded-xl p-2 bg-[#FAF6F9]">
+              {catalogProducts
+                .filter((p) => {
+                  if (!productSearch.trim()) return true;
+                  const q = productSearch.toLowerCase();
+                  return p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q);
+                })
+                .map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => setSelectedAddProductId(p.id)}
+                    className={`p-2.5 rounded-lg cursor-pointer transition flex items-center justify-between ${
+                      selectedAddProductId === p.id
+                        ? 'bg-[#714B67] text-white shadow-xs'
+                        : 'hover:bg-white text-[#241621]'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-bold text-xs">{p.name}</div>
+                      <div className={`text-[10px] ${selectedAddProductId === p.id ? 'text-purple-200' : 'text-slate-500'}`}>
+                        SKU: {p.sku} • {p.category} • {p.warrantyYears ? `${p.warrantyYears}yr Warranty` : 'Standard'}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-black text-xs">₹{Number(p.salePrice || 0).toLocaleString()}</div>
+                      <div className={`text-[9px] ${selectedAddProductId === p.id ? 'text-purple-200' : 'text-slate-400'}`}>per unit</div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+
+            {/* Quantity */}
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-[#241621]">Quantity:</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={addQty}
+                  onChange={(e) => setAddQty(Math.max(1, Number(e.target.value)))}
+                  className="w-20 p-2 rounded-xl border border-[#EBDCE7] text-center font-bold text-xs outline-none focus:ring-1 focus:ring-[#714B67]"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddProductModal(false)}
+                  className="px-4 py-2 rounded-xl border border-[#EBDCE7] text-xs font-bold text-slate-600 hover:bg-[#FAF6F9] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddProductToQuote}
+                  disabled={!selectedAddProductId}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#714B67] to-[#8a5d7e] hover:opacity-95 text-white text-xs font-black shadow-md cursor-pointer disabled:opacity-40"
+                >
+                  Add to Proposal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
