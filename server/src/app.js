@@ -66,6 +66,12 @@ app.use("/api/v1/inventory", require("./modules/inventory/routes"));
 app.use("/api/v1/quotes", require("./modules/quotes/routes"));
 app.use("/api/v1/orders", require("./modules/orders/routes"));
 app.use("/api/v1/dispatch", require("./modules/dispatch/routes"));
+app.use("/api/v1/jobs", require("./modules/jobs/routes"));
+app.use("/api/v1/warranty", require("./modules/warranty/routes"));
+app.use("/api/v1/tickets", require("./modules/tickets/routes"));
+app.use("/api/v1/finance", require("./modules/finance/routes"));
+app.use("/api/v1/dashboard", require("./modules/dashboard/routes"));
+app.use("/api/v1/customer-portal", require("./modules/customerPortal/routes"));
 
 // Health endpoint: checks both the API process and PostgreSQL.
 app.get("/health", async (req, res, next) => {
