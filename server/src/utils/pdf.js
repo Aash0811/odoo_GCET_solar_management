@@ -14,11 +14,12 @@ function generateQuotePdf(quote, company) {
       doc
         .fontSize(20)
         .fillColor("#0284c7")
-        .text("SUNPOWER SOLUTIONS", { align: "left" })
+        .text((company.name || "SUNPOWER SOLUTIONS").toUpperCase(), { align: "left" })
         .fontSize(10)
         .fillColor("#64748b")
         .text("Rooftop Solar EPC & Clean Energy Systems", { align: "left" })
         .text(`GSTIN: ${company.gstNumber || "36AABCU9603R1ZM"} | Phone: ${company.phone || "+91 98765 43210"}`)
+        .text(`Address: ${company.address || "Energy Park, Hyderabad"}`)
         .moveDown();
 
       doc
@@ -170,9 +171,10 @@ function generateInvoicePdf(invoice, company) {
       doc
         .fontSize(20)
         .fillColor("#0284c7")
-        .text("SUNPOWER SOLUTIONS", 50, 50)
+        .text((company.name || "SUNPOWER SOLUTIONS").toUpperCase(), 50, 45)
         .fontSize(10)
         .fillColor("#64748b")
+        .text(`GSTIN: ${company.gstNumber || "36AABCU9603R1ZM"} | ${company.phone || "+91 98765 43210"}`)
         .text("Tax Invoice & Service Bill")
         .moveDown(1);
 
@@ -248,7 +250,7 @@ function generateCompletionCertificatePdf(job, company) {
         .text("INSTALLATION COMPLETION CERTIFICATE", 50, 70, { align: "center" })
         .fontSize(11)
         .fillColor("#0284c7")
-        .text("SunPower Solutions Quality & Commissioning Assurance", { align: "center" })
+        .text(`${company?.name || "SunPower Solutions"} Quality & Commissioning Assurance`, { align: "center" })
         .moveDown(2);
 
       doc

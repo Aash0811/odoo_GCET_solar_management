@@ -11,6 +11,13 @@ const {
   updateChecklistSchema,
 } = require("./schema");
 
+// Public endpoint for online customer rooftop solar inquiry form
+router.post(
+  "/public",
+  validate(createLeadSchema.partial({ title: true })),
+  leadsController.createPublicLead
+);
+
 router.use(authenticate);
 router.use(companyScope);
 

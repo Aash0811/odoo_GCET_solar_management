@@ -1,4 +1,27 @@
 const leadsService = require("./service");
+const prisma = require("../../config/prisma");
+
+async function createPublicLead(req, res, next) {
+  try {
+    const company = await prisma.company.findFirst({ where: { isActive: true } });
+    if (!company) {
+      return res.status(404).json({ success: false, message: "Company not found." });
+    }
+    const leadData = {
+      ...req.body,
+      title: req.body.title || `${req.body.desiredCapacityKw || 3} kW Rooftop Inquiry - ${req.body.contactName}`,
+      source: req.body.source || "WEB_FORM",
+    };
+    const lead = await leadsService.createLead(company.id, leadData, null, req);
+    return res.status(201).json({
+      success: true,
+      message: "Your solar inquiry has been received. Our sales engineering team will call you shortly!",
+      data: lead,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 
 async function listLeads(req, res, next) {
   try {
@@ -77,6 +100,7 @@ async function archiveLead(req, res, next) {
 }
 
 module.exports = {
+  createPublicLead,
   listLeads,
   getLead,
   createLead,

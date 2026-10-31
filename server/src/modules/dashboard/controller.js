@@ -15,9 +15,9 @@ async function getStats(req, res, next) {
 async function exportCsv(req, res, next) {
   try {
     const csvData = await dashboardService.exportDashboardCsv(req.companyId);
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename=solar-dashboard-${Date.now()}.csv`);
-    return res.send(csvData);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="sunpower-solar-audit-${Date.now()}.csv"`);
+    return res.status(200).send(csvData);
   } catch (error) {
     next(error);
   }

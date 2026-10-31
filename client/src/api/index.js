@@ -10,8 +10,12 @@ export const leadsApi = {
   list: (params) => apiClient.get('/leads', { params }),
   get: (id) => apiClient.get(`/leads/${id}`),
   create: (data) => apiClient.post('/leads', data),
+  submitPublicInquiry: (data) => apiClient.post('/leads/public', data),
   updateChecklist: (id, data) => apiClient.patch(`/leads/${id}/checklist`, data),
-  updateStage: (id, data) => apiClient.patch(`/leads/${id}/stage`, data),
+  updateStage: (id, data, lossReason = null) => {
+    const payload = typeof data === 'string' ? { stage: data, lossReason } : data;
+    return apiClient.patch(`/leads/${id}/stage`, payload);
+  },
   archive: (id) => apiClient.delete(`/leads/${id}`),
 };
 
@@ -37,7 +41,11 @@ export const quotesApi = {
   get: (id) => apiClient.get(`/quotes/${id}`),
   create: (data) => apiClient.post('/quotes', data),
   updateStatus: (id, data) => apiClient.patch(`/quotes/${id}/status`, data),
-  downloadPdfUrl: (id) => `${apiClient.defaults.baseURL}/quotes/${id}/pdf`,
+  downloadPdf: (id) => apiClient.get(`/quotes/${id}/pdf`, { responseType: 'blob' }),
+  downloadPdfUrl: (id) => {
+    const token = localStorage.getItem('sunpower_token');
+    return `${apiClient.defaults.baseURL}/quotes/${id}/pdf${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  },
 };
 
 export const ordersApi = {
@@ -63,7 +71,10 @@ export const jobsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   complete: (id, data) => apiClient.post(`/jobs/${id}/complete`, data),
-  downloadCertificateUrl: (id) => `${apiClient.defaults.baseURL}/jobs/${id}/certificate`,
+  downloadCertificateUrl: (id) => {
+    const token = localStorage.getItem('sunpower_token');
+    return `${apiClient.defaults.baseURL}/jobs/${id}/certificate${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  },
 };
 
 export const warrantyApi = {
@@ -88,12 +99,19 @@ export const financeApi = {
   getPayouts: () => apiClient.get('/finance/payouts'),
   getInvoices: (params) => apiClient.get('/finance/invoices', { params }),
   addCostEntry: (data) => apiClient.post('/finance/cost-entries', data),
-  downloadInvoiceUrl: (id) => `${apiClient.defaults.baseURL}/finance/invoices/${id}/pdf`,
+  downloadInvoiceUrl: (id) => {
+    const token = localStorage.getItem('sunpower_token');
+    return `${apiClient.defaults.baseURL}/finance/invoices/${id}/pdf${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  },
 };
 
 export const dashboardApi = {
   getStats: (timeframe = 'month') => apiClient.get('/dashboard/stats', { params: { timeframe } }),
-  exportCsvUrl: () => `${apiClient.defaults.baseURL}/dashboard/export-csv`,
+  exportCsv: () => apiClient.get('/dashboard/export-csv', { responseType: 'blob' }),
+  exportCsvUrl: () => {
+    const token = localStorage.getItem('sunpower_token');
+    return `${apiClient.defaults.baseURL}/dashboard/export-csv${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  },
   createShareLink: (data) => apiClient.post('/dashboard/share-link', data),
   getShared: (token) => apiClient.get(`/dashboard/shared/${token}`),
 };
@@ -102,4 +120,9 @@ export const customerPortalApi = {
   getMe: (customerId) => apiClient.get('/customer-portal/me', { params: { customerId } }),
   raiseTicket: (data) => apiClient.post('/customer-portal/tickets', data),
   signJob: (jobId, data) => apiClient.post(`/customer-portal/jobs/${jobId}/sign`, data),
+};
+
+export const companyApi = {
+  get: () => apiClient.get('/company'),
+  update: (data) => apiClient.patch('/company', data),
 };

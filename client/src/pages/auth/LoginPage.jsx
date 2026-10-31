@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { Sun, ShieldCheck, Zap, ArrowRight, Sparkles } from 'lucide-react';
+import { leadsApi } from '../../api';
+import { Sun, ShieldCheck, Zap, ArrowRight, Sparkles, Home, CheckCircle2, X } from 'lucide-react';
 
 export default function LoginPage() {
   const { login, quickSwitchRole } = useAuth();
@@ -11,6 +12,53 @@ export default function LoginPage() {
   const [password, setPassword] = useState('password123');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Online Inquiry Modal State (Scene 1: Homeowner Inquiry)
+  const [inquiryModalOpen, setInquiryModalOpen] = useState(false);
+  const [inquirySubmitting, setInquirySubmitting] = useState(false);
+  const [inquirySuccess, setInquirySuccess] = useState('');
+  const [inquiryError, setInquiryError] = useState('');
+  const [inquiryForm, setInquiryForm] = useState({
+    contactName: '',
+    phone: '',
+    email: '',
+    address: '',
+    desiredCapacityKw: 3,
+    monthlyBillAmount: 4500,
+    notes: 'Inquiry for rooftop solar under PM Surya Ghar Subsidy scheme.',
+  });
+
+  const handleInquirySubmit = async (e) => {
+    e.preventDefault();
+    setInquiryError('');
+    setInquirySubmitting(true);
+    try {
+      const res = await leadsApi.submitPublicInquiry({
+        ...inquiryForm,
+        title: `${inquiryForm.desiredCapacityKw} kW Rooftop Inquiry - ${inquiryForm.contactName}`,
+        desiredCapacityKw: Number(inquiryForm.desiredCapacityKw),
+        monthlyBillAmount: Number(inquiryForm.monthlyBillAmount || 0),
+      });
+      setInquirySuccess(res.data?.message || 'Your inquiry was received! A sales engineer will contact you.');
+      setTimeout(() => {
+        setInquiryForm({
+          contactName: '',
+          phone: '',
+          email: '',
+          address: '',
+          desiredCapacityKw: 3,
+          monthlyBillAmount: 4500,
+          notes: 'Inquiry for rooftop solar under PM Surya Ghar Subsidy scheme.',
+        });
+        setInquirySuccess('');
+        setInquiryModalOpen(false);
+      }, 2500);
+    } catch (err) {
+      setInquiryError(err.response?.data?.message || 'Failed to submit inquiry. Please try again.');
+    } finally {
+      setInquirySubmitting(false);
+    }
+  };
 
   const demoRoles = [
     { role: 'ADMIN', name: 'Director', email: 'admin@sunpower.com', path: '/admin/dashboard' },
@@ -99,8 +147,8 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-6 pt-4 border-t border-[#3a2534] flex items-center gap-2 text-[11px] text-[#dabfd2]/80">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>PostgreSQL Multi-tenant companyId scoped</span>
+            <ShieldCheck className="w-4 h-4 text-[#f09e38]" />
+            <span>Dedicated Enterprise Edition • SunPower Solutions Pvt Ltd</span>
           </div>
         </div>
 
@@ -154,8 +202,147 @@ export default function LoginPage() {
           <p className="mt-6 text-center text-[11px] text-[#dabfd2]/70">
             Default demo password: <code className="text-[#f09e38] bg-[#2e1d2b] px-1.5 py-0.5 rounded border border-[#5e3d55]">password123</code>
           </p>
+
+          <div className="mt-5 pt-4 border-t border-[#3a2534] text-center">
+            <button
+              type="button"
+              onClick={() => setInquiryModalOpen(true)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#f09e38] hover:text-white transition-colors"
+            >
+              <Home className="w-3.5 h-3.5" />
+              <span>Are you a homeowner? Request Rooftop Subsidy Quote →</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Online Rooftop Solar Inquiry Modal (Scene 1) */}
+      {inquiryModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#241621] border border-[#5e3d55] rounded-2xl w-full max-w-lg p-6 shadow-2xl relative text-left text-white animate-fade-in">
+            <button
+              type="button"
+              onClick={() => setInquiryModalOpen(false)}
+              className="absolute top-4 right-4 text-[#dabfd2] hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-2">
+              <span className="p-2 rounded-xl bg-[#f09e38]/20 text-[#f09e38]">
+                <Sun className="w-5 h-5" />
+              </span>
+              <div>
+                <h3 className="text-lg font-bold">Rooftop Solar Subsidy Inquiry</h3>
+                <p className="text-xs text-[#dabfd2]">Directly notifies SunPower sales team for site survey booking</p>
+              </div>
+            </div>
+
+            {inquirySuccess ? (
+              <div className="my-6 p-4 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 flex items-center gap-3">
+                <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
+                <p className="text-xs font-medium">{inquirySuccess}</p>
+              </div>
+            ) : (
+              <form onSubmit={handleInquirySubmit} className="mt-4 space-y-3.5">
+                {inquiryError && (
+                  <div className="p-2.5 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs">
+                    {inquiryError}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#dabfd2] mb-1">Full Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Ramesh Kumar"
+                      value={inquiryForm.contactName}
+                      onChange={(e) => setInquiryForm({ ...inquiryForm, contactName: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-[#2e1d2b] border border-[#5e3d55] text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#f09e38]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#dabfd2] mb-1">Phone Number *</label>
+                    <input
+                      type="tel"
+                      required
+                      placeholder="e.g. 9876543210"
+                      value={inquiryForm.phone}
+                      onChange={(e) => setInquiryForm({ ...inquiryForm, phone: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-[#2e1d2b] border border-[#5e3d55] text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#f09e38]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#dabfd2] mb-1">Email (Optional)</label>
+                    <input
+                      type="email"
+                      placeholder="ramesh@example.com"
+                      value={inquiryForm.email}
+                      onChange={(e) => setInquiryForm({ ...inquiryForm, email: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-[#2e1d2b] border border-[#5e3d55] text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#f09e38]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-[#dabfd2] mb-1">System Size (kW)</label>
+                    <select
+                      value={inquiryForm.desiredCapacityKw}
+                      onChange={(e) => setInquiryForm({ ...inquiryForm, desiredCapacityKw: Number(e.target.value) })}
+                      className="w-full px-3 py-2 rounded-xl bg-[#2e1d2b] border border-[#5e3d55] text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#f09e38]"
+                    >
+                      <option value={1}>1 kW (Small Home / 100-150 units)</option>
+                      <option value={2}>2 kW (Medium Home / 200-300 units)</option>
+                      <option value={3}>3 kW (Most Popular - PM Surya Ghar Subsidy)</option>
+                      <option value={4}>4 kW (Large Residence)</option>
+                      <option value={5}>5 kW (Commercial / Villa)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-[#dabfd2] mb-1">Installation Address / City *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Plot 12, Banjara Hills, Hyderabad"
+                    value={inquiryForm.address}
+                    onChange={(e) => setInquiryForm({ ...inquiryForm, address: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-[#2e1d2b] border border-[#5e3d55] text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#f09e38]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-medium text-[#dabfd2] mb-1">Approx. Monthly Electricity Bill (₹)</label>
+                  <input
+                    type="number"
+                    placeholder="4500"
+                    value={inquiryForm.monthlyBillAmount}
+                    onChange={(e) => setInquiryForm({ ...inquiryForm, monthlyBillAmount: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-[#2e1d2b] border border-[#5e3d55] text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#f09e38]"
+                  />
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#3a2534]/50 border border-[#5e3d55] text-[11px] text-[#dabfd2] flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-[#f09e38] shrink-0" />
+                  <span>Eligible for up to ₹78,000 direct DBT subsidy under PM Surya Ghar Muft Bijli Yojana.</span>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={inquirySubmitting}
+                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-[#f09e38] to-[#714b67] hover:brightness-110 shadow-lg shadow-[#714b67]/30 transition-all disabled:opacity-50"
+                >
+                  {inquirySubmitting ? 'Submitting to SunPower Sales Team...' : 'Submit Rooftop Inquiry (Free Survey)'}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

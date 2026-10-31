@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { dashboardApi } from '../../api';
+import { dashboardApi, companyApi } from '../../api';
 import {
   DollarSign,
   TrendingUp,
@@ -18,6 +18,9 @@ import {
   BarChart3,
   Calendar,
   Layers,
+  Building2,
+  X,
+  Save,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -37,6 +40,78 @@ export default function AdminDashboardPage() {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareLink, setShareLink] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Company Profile Modal State (Single Company Settings)
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [companyForm, setCompanyForm] = useState({
+    name: 'SunPower Solutions Pvt Ltd',
+    gstNumber: '36AABCS1234F1Z8',
+    email: 'info@sunpowersolutions.com',
+    phone: '+91 98765 00000',
+    address: 'Plot 42, Energy Park, Hyderabad, Telangana 500081',
+  });
+  const [companyLoading, setCompanyLoading] = useState(false);
+  const [companySaved, setCompanySaved] = useState(false);
+
+  const handleOpenCompanySettings = async () => {
+    setCompanyModalOpen(true);
+    setCompanySaved(false);
+    try {
+      const res = await companyApi.get();
+      if (res.data?.data) {
+        setCompanyForm({
+          name: res.data.data.name || '',
+          gstNumber: res.data.data.gstNumber || '',
+          email: res.data.data.email || '',
+          phone: res.data.data.phone || '',
+          address: res.data.data.address || '',
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load company profile:', err);
+    }
+  };
+
+  const handleSaveCompanySettings = async (e) => {
+    e.preventDefault();
+    setCompanyLoading(true);
+    try {
+      await companyApi.update(companyForm);
+      setCompanySaved(true);
+      setTimeout(() => {
+        setCompanySaved(false);
+        setCompanyModalOpen(false);
+      }, 1500);
+    } catch (err) {
+      alert('Failed to update company settings: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setCompanyLoading(false);
+    }
+  };
+
+  const [downloadingCsv, setDownloadingCsv] = useState(false);
+
+  const handleDownloadCsv = async () => {
+    setDownloadingCsv(true);
+    try {
+      const res = await dashboardApi.exportCsv();
+      const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `sunpower-solar-audit-${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download CSV:', err);
+      // Fallback to tokenized URL
+      window.open(dashboardApi.exportCsvUrl(), '_blank');
+    } finally {
+      setDownloadingCsv(false);
+    }
+  };
 
   const fetchStats = async () => {
     setLoading(true);
@@ -118,14 +193,21 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Export CSV Button */}
-          <a
-            href={dashboardApi.exportCsvUrl()}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#EBDCE7] bg-white hover:bg-[#FAF6F9] text-[#714B67] text-xs font-black shadow-xs transition"
+          <button
+            onClick={handleDownloadCsv}
+            disabled={downloadingCsv}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#EBDCE7] bg-white hover:bg-[#FAF6F9] text-[#714B67] text-xs font-black shadow-xs transition cursor-pointer disabled:opacity-50"
           >
-            <Download className="w-3.5 h-3.5 text-[#f09e38]" /> CSV Report
-          </a>
+            <Download className="w-3.5 h-3.5 text-[#f09e38]" /> {downloadingCsv ? 'Downloading...' : 'CSV Report'}
+          </button>
+
+          {/* Company Profile Settings Button */}
+          <button
+            onClick={handleOpenCompanySettings}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#EBDCE7] bg-white hover:bg-[#FAF6F9] text-[#714B67] text-xs font-black shadow-xs transition cursor-pointer"
+          >
+            <Building2 className="w-3.5 h-3.5 text-[#f09e38]" /> Company Profile
+          </button>
 
           {/* Shareable Link Button */}
           <button
@@ -430,6 +512,123 @@ export default function AdminDashboardPage() {
                 Done
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Company Profile Settings Modal (Single Company Dedicated Edition) */}
+      {companyModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-[#EBDCE7] animate-fade-in text-[#241621]">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EBDCE7] mb-4">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-[#F5EDF3] text-[#714B67]">
+                  <Building2 className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-black text-[#241621]">Company Profile & Branding</h3>
+                  <p className="text-xs text-[#714B67] font-semibold">Single Company Dedicated Configuration</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCompanyModalOpen(false)}
+                className="text-[#714B67] hover:bg-[#F5EDF3] p-1.5 rounded-lg transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {companySaved && (
+              <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Company profile updated successfully across all PDF quotes, invoices and operations!</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveCompanySettings} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-[#714B67] mb-1">Company Legal Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={companyForm.name}
+                  onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#EBDCE7] text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#714B67]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#714B67] mb-1">GSTIN Number *</label>
+                  <input
+                    type="text"
+                    required
+                    value={companyForm.gstNumber}
+                    onChange={(e) => setCompanyForm({ ...companyForm, gstNumber: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#EBDCE7] text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#714B67]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#714B67] mb-1">Official Phone *</label>
+                  <input
+                    type="text"
+                    required
+                    value={companyForm.phone}
+                    onChange={(e) => setCompanyForm({ ...companyForm, phone: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-[#EBDCE7] text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#714B67]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#714B67] mb-1">Official Email *</label>
+                <input
+                  type="email"
+                  required
+                  value={companyForm.email}
+                  onChange={(e) => setCompanyForm({ ...companyForm, email: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#EBDCE7] text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#714B67]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#714B67] mb-1">Headquarters / Operational Address *</label>
+                <textarea
+                  rows={2}
+                  required
+                  value={companyForm.address}
+                  onChange={(e) => setCompanyForm({ ...companyForm, address: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#EBDCE7] text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#714B67]"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-[#F5EDF3] border border-[#EBDCE7] text-[11px] text-[#714B67]">
+                <p className="font-bold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-[#f09e38]" /> Single-Company Binding Active:
+                </p>
+                <p className="text-[10.5px] mt-0.5 text-slate-600">
+                  All customer quotes, tax invoices, technician completion certificates, and warehouse dispatches automatically bind to this company.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCompanyModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-[#EBDCE7] text-xs font-bold text-[#714B67] hover:bg-[#FAF6F9]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={companyLoading}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#714B67] to-[#855278] text-white text-xs font-black shadow-md flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                >
+                  <Save className="w-3.5 h-3.5 text-[#f09e38]" />
+                  {companyLoading ? 'Saving...' : 'Save Company Profile'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

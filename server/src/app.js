@@ -72,6 +72,7 @@ app.use("/api/v1/tickets", require("./modules/tickets/routes"));
 app.use("/api/v1/finance", require("./modules/finance/routes"));
 app.use("/api/v1/dashboard", require("./modules/dashboard/routes"));
 app.use("/api/v1/customer-portal", require("./modules/customerPortal/routes"));
+app.use("/api/v1/company", require("./modules/company/routes"));
 
 // Health endpoint: checks both the API process and PostgreSQL.
 app.get("/health", async (req, res, next) => {

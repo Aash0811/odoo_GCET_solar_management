@@ -4,16 +4,14 @@ const env = require("../config/env");
 
 async function authenticate(req, res, next) {
   try {
+    let token = null;
     const authorization = req.headers.authorization;
 
-    if (!authorization || !authorization.startsWith("Bearer ")) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication token is required.",
-      });
+    if (authorization && authorization.startsWith("Bearer ")) {
+      token = authorization.slice(7).trim();
+    } else if (req.query && req.query.token) {
+      token = req.query.token;
     }
-
-    const token = authorization.slice(7).trim();
 
     if (!token) {
       return res.status(401).json({

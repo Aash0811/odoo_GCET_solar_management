@@ -167,14 +167,17 @@ async function updateChecklist(companyId, id, checklistData, actorId, req = null
   const lead = await getLeadById(companyId, id);
 
   const isQualified =
-    checklistData.shadowFreeArea &&
-    checklistData.monthlyBill &&
-    checklistData.gridSuitable;
+    Boolean(checklistData.shadowFreeArea) &&
+    Boolean(checklistData.monthlyBill) &&
+    Boolean(checklistData.gridSuitable);
 
-  const nextStage =
-    isQualified && (lead.stage === "NEW" || lead.stage === "CONTACTED")
-      ? "QUALIFIED"
-      : lead.stage;
+  let nextStage = lead.stage;
+  if (isQualified && (lead.stage === "NEW" || lead.stage === "CONTACTED")) {
+    nextStage = "QUALIFIED";
+  } else if (!isQualified && lead.stage === "QUALIFIED") {
+    // If criteria unchecked/disqualified, automatically move back to CONTACTED
+    nextStage = "CONTACTED";
+  }
 
   return await prisma.$transaction(async (tx) => {
     const updated = await tx.lead.update({

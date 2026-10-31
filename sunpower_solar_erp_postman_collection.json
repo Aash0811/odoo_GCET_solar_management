@@ -1,0 +1,435 @@
+{
+  "info": {
+    "name": "SunPower Solutions - Solar Installation ERP API",
+    "_postman_id": "714b6700-solar-mgmt-api-hackathon-2026",
+    "description": "Comprehensive Postman collection for SunPower Solutions Solar Installation Management ERP. Covers all 13 modules, 11 business rules, JWT auth, and multi-tenant scoping.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication & Personas",
+      "item": [
+        {
+          "name": "Login as Admin (Managing Director)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.token) {",
+                  "    pm.collectionVariables.set('token', json.data.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@sunpower.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Login as Salesman (Lead Pipeline)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"sales@sunpower.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get Authenticated Profile (/auth/me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Sales Pipeline & Leads (Rule 1 & 2)",
+      "item": [
+        {
+          "name": "List All Active Leads (Kanban)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/leads",
+              "host": ["{{baseUrl}}"],
+              "path": ["leads"]
+            }
+          }
+        },
+        {
+          "name": "Create New Solar Enquiry",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"5kW Rooftop Villa Project\",\n  \"contactName\": \"Kavita Sharma\",\n  \"phone\": \"9876543299\",\n  \"email\": \"kavita@gmail.com\",\n  \"address\": \"Banjara Hills, Hyderabad\",\n  \"desiredCapacityKw\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/leads",
+              "host": ["{{baseUrl}}"],
+              "path": ["leads"]
+            }
+          }
+        },
+        {
+          "name": "Schedule Site Survey",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leadId\": \"REPLACE_WITH_LEAD_ID\",\n  \"scheduledAt\": \"2026-11-05T10:00:00.000Z\",\n  \"notes\": \"Check shadow from south-facing parapet wall\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/surveys/schedule",
+              "host": ["{{baseUrl}}"],
+              "path": ["surveys", "schedule"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Sizing & Quotation Engine (Rule 3)",
+      "item": [
+        {
+          "name": "List Package BOM Templates",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/inventory/templates",
+              "host": ["{{baseUrl}}"],
+              "path": ["inventory", "templates"]
+            }
+          }
+        },
+        {
+          "name": "Generate Quote (Auto-Expanded BOM by kW)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leadId\": \"REPLACE_WITH_SURVEY_APPROVED_LEAD_ID\",\n  \"packageTemplateId\": \"REPLACE_WITH_TEMPLATE_ID\",\n  \"capacityKw\": 5,\n  \"subsidyNote\": \"Eligible for Central PM Surya Ghar subsidy\",\n  \"discountAmount\": 5000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/quotes",
+              "host": ["{{baseUrl}}"],
+              "path": ["quotes"]
+            }
+          }
+        },
+        {
+          "name": "Download PDFKit Quotation Document",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quotes/REPLACE_WITH_QUOTE_ID/pdf",
+              "host": ["{{baseUrl}}"],
+              "path": ["quotes", "REPLACE_WITH_QUOTE_ID", "pdf"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Order Conversion & Payments (Rule 4)",
+      "item": [
+        {
+          "name": "Create Sales Order from Quote",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quoteId\": \"REPLACE_WITH_QUOTE_ID\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          }
+        },
+        {
+          "name": "Record Advance Deposit (Rule 4 Atomic Trigger)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50000,\n  \"method\": \"UPI\",\n  \"transactionRef\": \"UPI-TXN-982341\",\n  \"notes\": \"20% Advance booking confirmation\",\n  \"scheduledInstallDate\": \"2026-11-10\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/REPLACE_WITH_ORDER_ID/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", "REPLACE_WITH_ORDER_ID", "payments"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Warehouse Serial Barcode Scanning (Rule 5 & 6)",
+      "item": [
+        {
+          "name": "List Active Material Pick Lists",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/dispatch/pick-lists",
+              "host": ["{{baseUrl}}"],
+              "path": ["dispatch", "pick-lists"]
+            }
+          }
+        },
+        {
+          "name": "Scan Serial Barcode String",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"REPLACE_WITH_ORDER_ID\",\n  \"productId\": \"REPLACE_WITH_PRODUCT_ID\",\n  \"serial\": \"INV-5KW-DEMO-9912\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/dispatch/scan-serial",
+              "host": ["{{baseUrl}}"],
+              "path": ["dispatch", "scan-serial"]
+            }
+          }
+        },
+        {
+          "name": "Validate Delivery (Rule 5 Check & Rule 6 Auto-Warranties)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"deliveredTo\": \"Kavita Sharma\",\n  \"notes\": \"Dispatched to site via company transport\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/dispatch/orders/REPLACE_WITH_ORDER_ID/validate",
+              "host": ["{{baseUrl}}"],
+              "path": ["dispatch", "orders", "REPLACE_WITH_ORDER_ID", "validate"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Mobile Technician Execution (Rule 7)",
+      "item": [
+        {
+          "name": "List Assigned Installation Jobs",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/jobs",
+              "host": ["{{baseUrl}}"],
+              "path": ["jobs"]
+            }
+          }
+        },
+        {
+          "name": "Complete Installation (5 Checks + Photos + Signature)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startTime\": \"2026-11-10T09:00:00Z\",\n  \"endTime\": \"2026-11-10T17:00:00Z\",\n  \"confirmedKw\": 5,\n  \"checklist\": {\n    \"mountingStructureGrouting\": true,\n    \"moduleClampingTorque\": true,\n    \"dcdbAcdbWiringSpd\": true,\n    \"earthingPitResistance\": true,\n    \"inverterGridSyncPowerTest\": true\n  },\n  \"photos\": [\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\"],\n  \"customerSignature\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\",\n  \"signerName\": \"Kavita Sharma\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/jobs/REPLACE_WITH_JOB_ID/complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["jobs", "REPLACE_WITH_JOB_ID", "complete"]
+            }
+          }
+        },
+        {
+          "name": "Download Handover Completion Certificate PDF",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/jobs/REPLACE_WITH_JOB_ID/certificate",
+              "host": ["{{baseUrl}}"],
+              "path": ["jobs", "REPLACE_WITH_JOB_ID", "certificate"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Warranty, Service & FinOps (Rule 8, 9, 10)",
+      "item": [
+        {
+          "name": "Search Warranties by Serial/Name/Phone",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/warranty/search?q=INV3K-SN-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["warranty", "search"],
+              "query": [
+                { "key": "q", "value": "INV3K-SN-001" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Rule 9 Job Costing Audit (Red Loss Alerts)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/finance/job-costing",
+              "host": ["{{baseUrl}}"],
+              "path": ["finance", "job-costing"]
+            }
+          }
+        },
+        {
+          "name": "Rule 10 PM Surya Ghar Subsidy Tracker",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/finance/subsidies",
+              "host": ["{{baseUrl}}"],
+              "path": ["finance", "subsidies"]
+            }
+          }
+        },
+        {
+          "name": "Rule 10 Technician Wage Payouts",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/finance/technician-payouts",
+              "host": ["{{baseUrl}}"],
+              "path": ["finance", "technician-payouts"]
+            }
+          }
+        },
+        {
+          "name": "Issue 7-Day Expiring Public Share Link",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expiresInDays\": 7\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/share",
+              "host": ["{{baseUrl}}"],
+              "path": ["dashboard", "share"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
