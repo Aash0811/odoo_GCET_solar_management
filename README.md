@@ -1,0 +1,1 @@
+# odoo_GCET_solar_management
