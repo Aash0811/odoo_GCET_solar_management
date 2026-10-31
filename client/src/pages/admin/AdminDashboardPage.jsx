@@ -13,6 +13,11 @@ import {
   ArrowUpRight,
   Copy,
   ExternalLink,
+  Sparkles,
+  Zap,
+  BarChart3,
+  Calendar,
+  Layers,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -69,7 +74,7 @@ export default function AdminDashboardPage() {
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="w-8 h-8 border-4 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-10 h-10 border-4 border-[#714b67] border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -82,22 +87,29 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Top Header & Actions */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
+      {/* Top Header & Executive Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-3 border-b border-[#EBDCE7]">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Executive Dashboard</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Real-time solar project performance, finance & operations</p>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#f09e38] animate-pulse"></span>
+            <h1 className="text-2xl font-black text-[#241621] tracking-tight">Executive Solar Suite</h1>
+          </div>
+          <p className="text-xs text-[#714B67] font-semibold mt-0.5">
+            Real-time Telemetry: Commercial Pipeline • Production Warranties • Financial Margin Audits
+          </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Timeframe Filter */}
-          <div className="flex bg-slate-200 p-0.5 rounded-lg text-xs font-semibold">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Timeframe Filter Pills */}
+          <div className="flex bg-[#F5EDF3] p-1 rounded-xl text-xs font-bold border border-[#EBDCE7]">
             {['today', 'week', 'month', 'all'].map((t) => (
               <button
                 key={t}
                 onClick={() => setTimeframe(t)}
-                className={`px-3 py-1.5 rounded-md capitalize transition-all ${
-                  timeframe === t ? 'bg-white text-sky-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                className={`px-3 py-1.5 rounded-lg capitalize transition-all cursor-pointer ${
+                  timeframe === t
+                    ? 'bg-[#714B67] text-white shadow-sm font-black'
+                    : 'text-[#714B67] hover:bg-white/60'
                 }`}
               >
                 {t}
@@ -105,147 +117,180 @@ export default function AdminDashboardPage() {
             ))}
           </div>
 
-          {/* Export CSV */}
+          {/* Export CSV Button */}
           <a
             href={dashboardApi.exportCsvUrl()}
             target="_blank"
             rel="noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-sm"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#EBDCE7] bg-white hover:bg-[#FAF6F9] text-[#714B67] text-xs font-black shadow-xs transition"
           >
-            <Download className="w-3.5 h-3.5" /> CSV
+            <Download className="w-3.5 h-3.5 text-[#f09e38]" /> CSV Report
           </a>
 
           {/* Shareable Link Button */}
           <button
             onClick={handleGenerateShareLink}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-[#714B67] to-[#855278] hover:opacity-95 text-white text-xs font-black shadow-md shadow-[#714B67]/25 transition-all cursor-pointer"
           >
-            <Share2 className="w-3.5 h-3.5" /> Share Read-Only Link
+            <Share2 className="w-3.5 h-3.5 text-[#f09e38]" /> Expiring Share Link
           </button>
         </div>
       </div>
 
       {/* KPI Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
+        {/* Revenue Card */}
+        <div className="p-5 rounded-2xl odoo-glass-card flex flex-col justify-between relative overflow-hidden group">
+          <div className="absolute top-0 left-0 h-1.5 w-full bg-gradient-to-r from-[#714B67] via-[#935F87] to-[#f09e38]"></div>
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Revenue</span>
-            <div className="p-2 rounded-lg bg-sky-50 text-sky-600">
-              <DollarSign className="w-4 h-4" />
+            <span className="text-[11px] font-black uppercase tracking-wider text-[#714B67]">Contracted Gross</span>
+            <div className="p-2.5 rounded-xl bg-[#F5EDF3] text-[#714B67] shadow-xs group-hover:scale-110 transition-transform">
+              <DollarSign className="w-5 h-5 text-[#f09e38]" />
             </div>
           </div>
           <div>
-            <div className="text-xl font-bold text-slate-900">
+            <div className="text-2xl font-black text-[#241621] tracking-tight">
               ₹{(kpis.totalRevenue || 0).toLocaleString('en-IN')}
             </div>
-            <p className="text-[11px] text-emerald-600 font-medium flex items-center gap-1 mt-1">
-              <ArrowUpRight className="w-3 h-3" /> Collections: ₹{(kpis.totalCollections || 0).toLocaleString('en-IN')}
+            <p className="text-[11px] text-emerald-700 font-black flex items-center gap-1 mt-1.5 bg-emerald-50 px-2 py-0.5 rounded-md w-fit border border-emerald-200">
+              <ArrowUpRight className="w-3.5 h-3.5" /> ₹{(kpis.totalCollections || 0).toLocaleString('en-IN')} collected
             </p>
           </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
+        {/* Outstanding Card */}
+        <div className="p-5 rounded-2xl odoo-glass-card flex flex-col justify-between relative overflow-hidden group">
+          <div className="absolute top-0 left-0 h-1.5 w-full bg-gradient-to-r from-[#f09e38] to-amber-500"></div>
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Outstanding</span>
-            <div className="p-2 rounded-lg bg-amber-50 text-amber-600">
-              <Clock className="w-4 h-4" />
+            <span className="text-[11px] font-black uppercase tracking-wider text-amber-700">Receivables</span>
+            <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 shadow-xs group-hover:scale-110 transition-transform">
+              <Clock className="w-5 h-5 text-amber-600" />
             </div>
           </div>
           <div>
-            <div className="text-xl font-bold text-slate-900">
+            <div className="text-2xl font-black text-[#241621] tracking-tight">
               ₹{(kpis.totalOutstanding || 0).toLocaleString('en-IN')}
             </div>
-            <p className="text-[11px] text-slate-500 mt-1">Pending client collections</p>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Lead Conversion</span>
-            <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-xl font-bold text-slate-900">{kpis.conversionRate || 0}%</div>
-            <p className="text-[11px] text-slate-500 mt-1">
-              {kpis.newLeads || 0} active leads / {kpis.ordersCount || 0} orders
+            <p className="text-[11px] text-amber-800 font-bold mt-1.5 bg-amber-50 px-2 py-0.5 rounded-md w-fit border border-amber-200">
+              Balance to collect
             </p>
           </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between">
+        {/* Conversion Rate Card */}
+        <div className="p-5 rounded-2xl odoo-glass-card flex flex-col justify-between relative overflow-hidden group">
+          <div className="absolute top-0 left-0 h-1.5 w-full bg-gradient-to-r from-emerald-500 to-teal-500"></div>
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-medium uppercase tracking-wider">Loss-Making Jobs</span>
-            <div className="p-2 rounded-lg bg-rose-50 text-rose-600">
-              <Flame className="w-4 h-4" />
+            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800">Pipeline Win Rate</span>
+            <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600 shadow-xs group-hover:scale-110 transition-transform">
+              <TrendingUp className="w-5 h-5 text-emerald-600" />
             </div>
           </div>
           <div>
-            <div className={`text-xl font-bold ${kpis.lossMakingJobsCount > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
-              {kpis.lossMakingJobsCount || 0} Jobs
+            <div className="text-2xl font-black text-[#241621] tracking-tight">{kpis.conversionRate || 0}%</div>
+            <p className="text-[11px] text-emerald-800 font-bold mt-1.5 bg-emerald-50 px-2 py-0.5 rounded-md w-fit border border-emerald-200">
+              {kpis.newLeads || 0} active / {kpis.ordersCount || 0} converted
+            </p>
+          </div>
+        </div>
+
+        {/* Rule 9 Loss-Making Jobs Alert Card */}
+        <div className="p-5 rounded-2xl odoo-glass-card flex flex-col justify-between relative overflow-hidden group">
+          <div className="absolute top-0 left-0 h-1.5 w-full bg-gradient-to-r from-rose-500 to-rose-600"></div>
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-black uppercase tracking-wider text-rose-700">Rule 9 Cost Audit</span>
+            <div className="p-2.5 rounded-xl bg-rose-50 text-rose-600 shadow-xs group-hover:scale-110 transition-transform">
+              <Flame className="w-5 h-5 text-rose-600" />
             </div>
-            <p className="text-[11px] text-rose-500 font-medium mt-1">Flagged below cost margin</p>
+          </div>
+          <div>
+            <div className={`text-2xl font-black ${kpis.lossMakingJobsCount > 0 ? 'text-rose-600' : 'text-[#241621]'} tracking-tight`}>
+              {kpis.lossMakingJobsCount || 0} Flagged
+            </div>
+            <p className="text-[11px] text-rose-800 font-bold mt-1.5 bg-rose-50 px-2 py-0.5 rounded-md w-fit border border-rose-200">
+              {kpis.lossMakingJobsCount > 0 ? 'Cost Overrun Detected' : 'All Orders Profitable'}
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Recharts Trends */}
+      {/* Visual Analytics Charts in Odoo Palette */}
       <div className="grid md:grid-cols-2 gap-6">
-        <div className="p-5 rounded-xl bg-white border border-slate-200 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-900 mb-4">Revenue vs Collections (Monthly INR)</h2>
+        <div className="p-6 rounded-2xl odoo-glass-card space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black text-[#241621] flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#714B67]"></span>
+              Revenue vs Collections (Fiscal INR)
+            </h2>
+            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-[#F5EDF3] text-[#714B67] border border-[#EBDCE7]">
+              Odoo FinEngine
+            </span>
+          </div>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data?.charts?.monthlyTrends || []}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} />
-                <YAxis stroke="#94a3b8" fontSize={11} />
-                <Tooltip formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`} />
-                <Legend wrapperStyle={{ fontSize: '11px' }} />
-                <Bar dataKey="revenue" fill="#0284c7" name="Billed Revenue" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="collections" fill="#10b981" name="Received Collections" radius={[4, 4, 0, 0]} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#EBDCE7" />
+                <XAxis dataKey="month" stroke="#935F87" fontSize={11} fontWeight={600} />
+                <YAxis stroke="#935F87" fontSize={11} fontWeight={600} />
+                <Tooltip
+                  formatter={(value) => `₹${Number(value).toLocaleString('en-IN')}`}
+                  contentStyle={{ backgroundColor: '#22151F', borderColor: '#382433', borderRadius: '12px', color: '#fff' }}
+                />
+                <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px', fontWeight: 600 }} />
+                <Bar dataKey="revenue" fill="#714B67" name="Billed Revenue" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="collections" fill="#00A09D" name="Collections Received" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="p-5 rounded-xl bg-white border border-slate-200 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-900 mb-4">Leads by Sales Funnel Stage</h2>
+        <div className="p-6 rounded-2xl odoo-glass-card space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black text-[#241621] flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#f09e38]"></span>
+              Sales Funnel Conversion Velocity
+            </h2>
+            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-[#f09e38]/15 text-[#d4821a] border border-[#f09e38]/30">
+              Live Pipeline
+            </span>
+          </div>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data?.charts?.leadsByStage || []} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                <XAxis type="number" stroke="#94a3b8" fontSize={11} />
-                <YAxis type="category" dataKey="stage" width={110} stroke="#94a3b8" fontSize={10} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#f59e0b" name="Leads" radius={[0, 4, 4, 0]} />
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#EBDCE7" />
+                <XAxis type="number" stroke="#935F87" fontSize={11} fontWeight={600} />
+                <YAxis type="category" dataKey="stage" width={110} stroke="#935F87" fontSize={10} fontWeight={600} />
+                <Tooltip contentStyle={{ backgroundColor: '#22151F', borderColor: '#382433', borderRadius: '12px', color: '#fff' }} />
+                <Bar dataKey="count" fill="#F09E38" name="Leads Count" radius={[0, 6, 6, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* Operational Sections: Stuck Jobs & Loss-making jobs */}
+      {/* Operational Grids: Unfinished Stuck Jobs & Flagged Loss-making jobs */}
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Unfinished / Stuck Jobs with Exact Stuck Step */}
-        <div className="p-5 rounded-xl bg-white border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
-              Unfinished Jobs & Stuck Step ({unfinishedJobs.length})
+        {/* Unfinished / Stuck Jobs with Exact Step */}
+        <div className="p-6 rounded-2xl odoo-glass-card space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black text-[#241621] flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-[#f09e38]" />
+              Installation Pipeline & Stuck Step ({unfinishedJobs.length})
             </h2>
           </div>
-          <div className="divide-y divide-slate-100 overflow-y-auto max-h-60">
+          <div className="divide-y divide-[#EBDCE7]/60 overflow-y-auto max-h-60">
             {unfinishedJobs.length === 0 ? (
-              <p className="text-xs text-slate-400 py-4 text-center">All jobs completed on schedule!</p>
+              <p className="text-xs text-[#b886ad] py-4 text-center font-medium">All installations on schedule!</p>
             ) : (
               unfinishedJobs.map((job) => (
-                <div key={job.id} className="py-2.5 flex items-center justify-between text-xs">
+                <div key={job.id} className="py-3 flex items-center justify-between text-xs">
                   <div>
-                    <span className="font-semibold text-slate-800">{job.jobNumber}</span> - {job.customerName}
-                    <div className="text-[11px] text-amber-600 font-medium mt-0.5">⚠️ {job.stuckStep}</div>
+                    <span className="font-black text-[#241621]">{job.jobNumber}</span> - {job.customerName}
+                    <div className="text-[11px] text-[#d4821a] font-bold mt-0.5 flex items-center gap-1">
+                      <span>⚠️ Stuck Step:</span> {job.stuckStep}
+                    </div>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-100 text-slate-600 font-semibold uppercase">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-[#F5EDF3] text-[#714B67] font-black uppercase border border-[#EBDCE7]">
                     {job.status}
                   </span>
                 </div>
@@ -254,27 +299,27 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Flagged Loss-Making Jobs */}
-        <div className="p-5 rounded-xl bg-white border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-bold text-rose-600 flex items-center gap-2">
-              <Flame className="w-4 h-4" /> Loss-Making Orders Flagged ({lossJobs.length})
+        {/* Flagged Loss-Making Jobs (Rule 9) */}
+        <div className="p-6 rounded-2xl odoo-glass-card space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black text-rose-600 flex items-center gap-2">
+              <Flame className="w-4 h-4" /> Loss-Making Orders (Rule 9 Audit) ({lossJobs.length})
             </h2>
           </div>
-          <div className="divide-y divide-slate-100 overflow-y-auto max-h-60">
+          <div className="divide-y divide-[#EBDCE7]/60 overflow-y-auto max-h-60">
             {lossJobs.length === 0 ? (
-              <p className="text-xs text-slate-400 py-4 text-center">No loss-making projects recorded.</p>
+              <p className="text-xs text-[#b886ad] py-4 text-center font-medium">Zero loss-making projects on record.</p>
             ) : (
               lossJobs.map((job) => (
-                <div key={job.orderId} className="py-2.5 flex items-center justify-between text-xs">
+                <div key={job.orderId} className="py-3 flex items-center justify-between text-xs">
                   <div>
-                    <span className="font-bold text-slate-800">{job.orderNumber}</span> ({job.customerName})
-                    <div className="text-[11px] text-slate-500">
+                    <span className="font-black text-[#241621]">{job.orderNumber}</span> ({job.customerName})
+                    <div className="text-[11px] text-slate-500 mt-0.5">
                       Revenue: ₹{job.revenue.toLocaleString()} | Costs: ₹{job.totalCost.toLocaleString()}
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-600 font-mono">
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-100 text-rose-700 font-mono border border-rose-300">
                       -₹{Math.abs(job.profit).toLocaleString()} ({job.profitMargin}%)
                     </span>
                   </div>
@@ -285,25 +330,25 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* Warranties Expiring in 60 Days & Open Tickets with Age */}
+      {/* Warranties Expiring & Support SLA */}
       <div className="grid md:grid-cols-2 gap-6">
-        <div className="p-5 rounded-xl bg-white border border-slate-200 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-purple-600" />
-            Warranties Expiring in 60 Days ({expiringWarranties.length})
+        <div className="p-6 rounded-2xl odoo-glass-card space-y-3">
+          <h2 className="text-sm font-black text-[#241621] flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-[#714B67]" />
+            Warranties Expiring Soon (&lt;60 Days) ({expiringWarranties.length})
           </h2>
-          <div className="divide-y divide-slate-100 overflow-y-auto max-h-52">
+          <div className="divide-y divide-[#EBDCE7]/60 overflow-y-auto max-h-52">
             {expiringWarranties.length === 0 ? (
-              <p className="text-xs text-slate-400 py-4 text-center">No warranties expiring within 60 days.</p>
+              <p className="text-xs text-[#b886ad] py-4 text-center font-medium">All warranties active and safe.</p>
             ) : (
               expiringWarranties.map((w) => (
-                <div key={w.id} className="py-2.5 flex items-center justify-between text-xs">
+                <div key={w.id} className="py-3 flex items-center justify-between text-xs">
                   <div>
-                    <span className="font-semibold text-slate-800">{w.serialNumber?.serial}</span> - {w.customer?.name}
-                    <p className="text-[10px] text-slate-500">{w.serialNumber?.product?.name}</p>
+                    <span className="font-mono font-black text-[#714B67]">{w.serialNumber?.serial}</span> - {w.customer?.name}
+                    <p className="text-[10px] text-slate-500 font-medium">{w.serialNumber?.product?.name}</p>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700">
-                    {w.daysLeft} days left
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-[#F5EDF3] text-[#714B67] border border-[#EBDCE7]">
+                    {w.daysLeft} days remaining
                   </span>
                 </div>
               ))
@@ -311,23 +356,23 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        <div className="p-5 rounded-xl bg-white border border-slate-200 shadow-sm">
-          <h2 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-blue-600" />
-            Open Support Tickets with Age ({openTickets.length})
+        <div className="p-6 rounded-2xl odoo-glass-card space-y-3">
+          <h2 className="text-sm font-black text-[#241621] flex items-center gap-2">
+            <Clock className="w-4 h-4 text-[#00A09D]" />
+            Open Service Desk Tickets ({openTickets.length})
           </h2>
-          <div className="divide-y divide-slate-100 overflow-y-auto max-h-52">
+          <div className="divide-y divide-[#EBDCE7]/60 overflow-y-auto max-h-52">
             {openTickets.length === 0 ? (
-              <p className="text-xs text-slate-400 py-4 text-center">All service tickets resolved.</p>
+              <p className="text-xs text-[#b886ad] py-4 text-center font-medium">Zero pending tickets in queue.</p>
             ) : (
               openTickets.map((t) => (
-                <div key={t.id} className="py-2.5 flex items-center justify-between text-xs">
+                <div key={t.id} className="py-3 flex items-center justify-between text-xs">
                   <div>
-                    <span className="font-semibold text-slate-800">{t.ticketNumber}</span>: {t.title}
-                    <p className="text-[10px] text-slate-500">Customer: {t.customerName}</p>
+                    <span className="font-mono font-black text-[#241621]">{t.ticketNumber}</span>: {t.title}
+                    <p className="text-[10px] text-slate-500 font-medium">Customer: {t.customerName}</p>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">
-                    {t.ageDays} days old
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                    {t.ageDays} days open
                   </span>
                 </div>
               ))
@@ -336,50 +381,51 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* Shareable Link Modal */}
+      {/* Shareable Link Modal in Odoo Theme */}
       {shareModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <Share2 className="w-5 h-5 text-sky-600" /> Shareable Read-Only Link
-              </h3>
-              <button onClick={() => setShareModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 bg-[#22151F]/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#EBDCE7] text-xs">
+            <div className="flex items-center justify-between mb-4 pb-2 border-b border-[#EBDCE7]">
+              <div className="flex items-center gap-2">
+                <Share2 className="w-5 h-5 text-[#714B67]" />
+                <h3 className="text-base font-black text-[#241621]">Expiring Executive Share Link</h3>
+              </div>
+              <button onClick={() => setShareModalOpen(false)} className="text-[#b886ad] cursor-pointer">
                 ✕
               </button>
             </div>
-            <p className="text-xs text-slate-600 mb-4">
-              This cryptographic token provides read-only executive view access for 7 days without login.
+            <p className="text-slate-600 mb-4">
+              This cryptographically signed URL grants 7-day read-only executive telemetry to bank officials, investors, and auditors without login credentials.
             </p>
 
-            <div className="flex items-center gap-2 p-2 bg-slate-100 rounded-lg mb-4">
+            <div className="flex items-center gap-2 p-2.5 bg-[#FAF6F9] border border-[#EBDCE7] rounded-xl mb-4">
               <input
                 type="text"
                 readOnly
                 value={shareLink}
-                className="bg-transparent text-xs text-slate-800 flex-1 outline-none font-mono truncate"
+                className="bg-transparent text-xs text-[#241621] flex-1 outline-none font-mono truncate font-bold"
               />
               <button
                 onClick={copyToClipboard}
-                className="px-3 py-1.5 rounded bg-sky-600 text-white text-xs font-semibold flex items-center gap-1 hover:bg-sky-500"
+                className="px-3.5 py-1.5 rounded-lg bg-[#714B67] text-white text-xs font-black flex items-center gap-1 hover:bg-[#5C3B53] cursor-pointer transition"
               >
                 {copied ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 {copied ? 'Copied' : 'Copy'}
               </button>
             </div>
 
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2.5">
               <a
                 href={shareLink}
                 target="_blank"
                 rel="noreferrer"
-                className="px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1"
+                className="px-4 py-2 rounded-xl border border-[#EBDCE7] text-xs font-black text-[#714B67] hover:bg-[#FAF6F9] flex items-center gap-1.5 transition"
               >
-                <ExternalLink className="w-3.5 h-3.5" /> Open Preview
+                <ExternalLink className="w-3.5 h-3.5" /> Launch Preview
               </a>
               <button
                 onClick={() => setShareModalOpen(false)}
-                className="px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-semibold"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#714B67] to-[#855278] text-white text-xs font-black shadow-md cursor-pointer"
               >
                 Done
               </button>

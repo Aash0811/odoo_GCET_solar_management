@@ -69,19 +69,19 @@ export default function FinancePage({ defaultTab = 'costing' }) {
         const res = await financeApi.getCosting({
           isLossOnly: costingFilter === 'LOSS_ONLY' ? 'true' : 'false',
         });
-        setCostings(res.data || []);
+        setCostings(res.data?.data || res.data || []);
       } else if (activeTab === 'subsidies') {
         setSubsidyLoading(true);
         const res = await financeApi.getSubsidies();
-        setSubsidies(res.data || []);
+        setSubsidies(res.data?.data || res.data || []);
       } else if (activeTab === 'payouts') {
         setPayoutsLoading(true);
         const res = await financeApi.getPayouts();
-        setPayouts(res.data || []);
+        setPayouts(res.data?.data || res.data || []);
       } else if (activeTab === 'invoices') {
         setInvoicesLoading(true);
         const res = await financeApi.getInvoices();
-        setInvoices(res.data || []);
+        setInvoices(res.data?.data || res.data || []);
       }
     } catch (err) {
       console.error('Error fetching finance tab data:', err);
@@ -97,7 +97,7 @@ export default function FinancePage({ defaultTab = 'costing' }) {
     setShowAddCostModal(true);
     try {
       const res = await ordersApi.list();
-      setOrdersList(res.data || []);
+      setOrdersList(res.data?.data || res.data || []);
     } catch (err) {
       console.error('Failed to load orders for cost form:', err);
     }
@@ -164,7 +164,7 @@ export default function FinancePage({ defaultTab = 'costing' }) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-            <Coins className="w-7 h-7 text-amber-500" />
+            <Coins className="w-7 h-7 text-[#714b67]" />
             Financial Operations & Job Costing
           </h1>
           <p className="text-sm text-slate-500">
@@ -176,7 +176,7 @@ export default function FinancePage({ defaultTab = 'costing' }) {
           {activeTab === 'costing' && (
             <button
               onClick={handleOpenAddCost}
-              className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-sm transition"
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-[#714b67] hover:bg-[#5e3d55] text-white rounded-lg text-xs font-semibold shadow-sm transition"
             >
               <Plus className="w-4 h-4" /> Add Expense
             </button>
@@ -192,12 +192,12 @@ export default function FinancePage({ defaultTab = 'costing' }) {
       </div>
 
       {/* Tabs navigation */}
-      <div className="flex border-b border-slate-200 gap-6 overflow-x-auto">
+      <div className="flex border-b border-[#ebdce6] gap-6 overflow-x-auto">
         <button
           onClick={() => setActiveTab('costing')}
           className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
             activeTab === 'costing'
-              ? 'border-amber-500 text-amber-600'
+              ? 'border-[#714b67] text-[#714b67] font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -209,7 +209,7 @@ export default function FinancePage({ defaultTab = 'costing' }) {
           onClick={() => setActiveTab('subsidies')}
           className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
             activeTab === 'subsidies'
-              ? 'border-amber-500 text-amber-600'
+              ? 'border-[#714b67] text-[#714b67] font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -221,7 +221,7 @@ export default function FinancePage({ defaultTab = 'costing' }) {
           onClick={() => setActiveTab('payouts')}
           className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
             activeTab === 'payouts'
-              ? 'border-amber-500 text-amber-600'
+              ? 'border-[#714b67] text-[#714b67] font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -233,7 +233,7 @@ export default function FinancePage({ defaultTab = 'costing' }) {
           onClick={() => setActiveTab('invoices')}
           className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition whitespace-nowrap ${
             activeTab === 'invoices'
-              ? 'border-amber-500 text-amber-600'
+              ? 'border-[#714b67] text-[#714b67] font-bold'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
@@ -247,50 +247,63 @@ export default function FinancePage({ defaultTab = 'costing' }) {
         <div className="space-y-6">
           {/* Costing KPI Summary */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
+            <div className="p-5 rounded-2xl odoo-glass-card flex items-center justify-between relative overflow-hidden group">
+              <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-emerald-500 to-teal-500"></div>
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase">Total Revenue</p>
-                <p className="text-xl font-bold text-slate-900 mt-1">₹{totalRevenue.toLocaleString()}</p>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Revenue</p>
+                <p className="text-2xl font-extrabold text-[#241621] mt-1">₹{totalRevenue.toLocaleString()}</p>
+                <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded mt-1 inline-block">
+                  Verified Invoiced
+                </span>
               </div>
-              <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600">
-                <TrendingUp className="w-5 h-5" />
+              <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-600 shadow-xs group-hover:scale-110 transition-transform">
+                <TrendingUp className="w-6 h-6" />
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
+            <div className="p-5 rounded-2xl odoo-glass-card flex items-center justify-between relative overflow-hidden group">
+              <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-[#714B67] to-[#f09e38]"></div>
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase">Net Project Profit</p>
-                <p className={`text-xl font-bold mt-1 ${totalProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Net Project Profit</p>
+                <p className={`text-2xl font-extrabold mt-1 ${totalProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                   ₹{totalProfit.toLocaleString()}
                 </p>
+                <span className="text-[10px] font-semibold text-[#714B67] bg-[#F5EDF3] px-2 py-0.5 rounded mt-1 inline-block">
+                  After BOM & Labour
+                </span>
               </div>
-              <div className="p-2.5 rounded-xl bg-sky-50 text-sky-600">
-                <Coins className="w-5 h-5" />
+              <div className="p-3 rounded-2xl bg-[#F5EDF3] text-[#714B67] shadow-xs group-hover:scale-110 transition-transform">
+                <Coins className="w-6 h-6" />
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-between">
+            <div className="p-5 rounded-2xl odoo-glass-card flex items-center justify-between relative overflow-hidden group">
+              <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-rose-500 to-rose-600"></div>
               <div>
-                <p className="text-xs font-medium text-slate-500 uppercase">Loss-Making Jobs</p>
-                <p className="text-xl font-bold text-rose-600 mt-1">{lossJobsCount} Alert(s)</p>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Loss-Making Jobs</p>
+                <p className="text-2xl font-extrabold text-rose-600 mt-1">{lossJobsCount} Alert(s)</p>
+                <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded mt-1 inline-block">
+                  Rule 9 Threshold
+                </span>
               </div>
-              <div className="p-2.5 rounded-xl bg-rose-50 text-rose-600">
-                <AlertTriangle className="w-5 h-5" />
+              <div className="p-3 rounded-2xl bg-rose-50 text-rose-600 shadow-xs group-hover:scale-110 transition-transform">
+                <AlertTriangle className="w-6 h-6" />
               </div>
             </div>
           </div>
 
           {/* Table Header Filter */}
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 p-3 bg-white rounded-xl border border-[#EBDCE7]">
+            <div className="text-xs font-bold text-[#714B67] uppercase tracking-wider flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#f09e38]"></span>
               Formula: Profit = Revenue - BOM Cost - Tech Cost - Extra Costs
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500">Filter:</span>
+              <span className="text-xs text-slate-500 font-medium">Filter:</span>
               <select
                 value={costingFilter}
                 onChange={(e) => setCostingFilter(e.target.value)}
-                className="text-xs font-medium border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-2 focus:ring-amber-500"
+                className="text-xs font-semibold border border-[#dabed3] rounded-lg px-3 py-1.5 bg-[#FAF6F9] text-[#714B67] outline-none focus:ring-2 focus:ring-[#714b67]"
               >
                 <option value="ALL">All Projects ({costings.length})</option>
                 <option value="LOSS_ONLY">Loss-Making Only (Rule 9 Flag)</option>
@@ -299,20 +312,20 @@ export default function FinancePage({ defaultTab = 'costing' }) {
           </div>
 
           {/* Table */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-2xl border border-[#EBDCE7] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-600">
-                <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-slate-200">
+                <thead className="bg-[#F5EDF3] text-[#714B67] uppercase text-[10px] font-extrabold border-b border-[#EBDCE7]">
                   <tr>
-                    <th className="px-4 py-3">Order / Customer</th>
-                    <th className="px-4 py-3">Capacity</th>
-                    <th className="px-4 py-3 text-right">Revenue</th>
-                    <th className="px-4 py-3 text-right">BOM Cost</th>
-                    <th className="px-4 py-3 text-right">Tech Labour</th>
-                    <th className="px-4 py-3 text-right">Other Costs</th>
-                    <th className="px-4 py-3 text-right">Total Cost</th>
-                    <th className="px-4 py-3 text-right">Net Profit</th>
-                    <th className="px-4 py-3 text-center">Margin / Status</th>
+                    <th className="px-4 py-3.5">Order / Customer</th>
+                    <th className="px-4 py-3.5">Capacity</th>
+                    <th className="px-4 py-3.5 text-right">Revenue</th>
+                    <th className="px-4 py-3.5 text-right">BOM Cost</th>
+                    <th className="px-4 py-3.5 text-right">Tech Labour</th>
+                    <th className="px-4 py-3.5 text-right">Other Costs</th>
+                    <th className="px-4 py-3.5 text-right">Total Cost</th>
+                    <th className="px-4 py-3.5 text-right">Net Profit</th>
+                    <th className="px-4 py-3.5 text-center">Margin / Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">

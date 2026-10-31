@@ -1,49 +1,54 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Rich Odoo Purple (#714B67) Palette */
+  --color-odoo-50: #fbf7fa;
+  --color-odoo-100: #f5edf3;
+  --color-odoo-200: #ebdce7;
+  --color-odoo-300: #dabed3;
+  --color-odoo-400: #b886ad;
+  --color-odoo-500: #935f87;
+  --color-odoo-600: #714b67; /* Core Odoo Purple */
+  --color-odoo-700: #5c3b53;
+  --color-odoo-800: #492f42;
+  --color-odoo-900: #382433;
+  --color-odoo-950: #22151f;
+
+  /* Vibrant Complementary Accents */
+  --color-odoo-gold: #f09e38;
+  --color-odoo-gold-light: #fef3e2;
+  --color-odoo-gold-dark: #d4821a;
+  --color-odoo-teal: #00a09d;
+  --color-odoo-teal-light: #e6f7f6;
+  --color-odoo-emerald: #10b981;
+  --color-odoo-rose: #f43f5e;
+}
+
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    --background: 300 20% 98%;
+    --foreground: 300 30% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 300 30% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 199 89% 48%; /* Solar Cyan / Sky */
-    --primary-foreground: 210 40% 98%;
-    --secondary: 38 92% 50%; /* Solar Amber / Gold */
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --popover-foreground: 300 30% 12%;
+    --primary: 316 20% 37%; /* #714B67 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 33 86% 58%; /* #f09e38 */
+    --secondary-foreground: 300 30% 12%;
+    --muted: 310 15% 95%;
+    --muted-foreground: 310 10% 45%;
+    --accent: 310 15% 94%;
+    --accent-foreground: 316 20% 25%;
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 199 89% 48%;
-    --radius: 0.75rem;
-  }
-
-  .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --card: 217 33% 17%;
-    --card-foreground: 210 40% 98%;
-    --popover: 217 33% 17%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 199 89% 48%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 38 92% 50%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 20%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217 33% 20%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 25%;
-    --input: 217 33% 25%;
-    --ring: 199 89% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 310 15% 90%;
+    --input: 310 15% 90%;
+    --ring: 316 20% 37%;
+    --radius: 0.85rem;
   }
 
   * {
@@ -52,26 +57,122 @@
 
   body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    background-color: #f8fafc;
-    color: #0f172a;
+    font-family: var(--font-sans);
+    background-color: #faf6f9;
+    color: #241621;
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.011em;
   }
 }
 
-/* Custom Utilities for Solar Management */
-.glass-panel {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+/* Luxury Glassmorphism & Visual Polish */
+.odoo-glass-card {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(235, 220, 231, 0.9);
+  box-shadow: 0 10px 30px -5px rgba(113, 75, 103, 0.08), 0 4px 8px -2px rgba(113, 75, 103, 0.04);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.solar-gradient {
-  background: linear-gradient(135deg, #0284c7 0%, #0369a1 50%, #0f172a 100%);
+.odoo-glass-card:hover {
+  border-color: rgba(184, 134, 173, 0.75);
+  box-shadow: 0 16px 36px -6px rgba(113, 75, 103, 0.14), 0 6px 12px -2px rgba(113, 75, 103, 0.07);
 }
 
-.solar-gold-gradient {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+.odoo-hero-gradient {
+  background: linear-gradient(135deg, #241621 0%, #3d2436 45%, #714b67 100%);
+}
+
+.odoo-gold-gradient {
+  background: linear-gradient(135deg, #f09e38 0%, #d4821a 100%);
+}
+
+.odoo-purple-gradient {
+  background: linear-gradient(135deg, #855278 0%, #714b67 55%, #502e47 100%);
+}
+
+.glow-purple {
+  box-shadow: 0 0 25px -4px rgba(113, 75, 103, 0.45);
+}
+
+.glow-gold {
+  box-shadow: 0 0 25px -4px rgba(240, 158, 56, 0.45);
+}
+
+.glow-teal {
+  box-shadow: 0 0 25px -4px rgba(0, 160, 157, 0.45);
+}
+
+.gradient-text-odoo {
+  background: linear-gradient(135deg, #714B67 0%, #935F87 60%, #F09E38 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-text-gold {
+  background: linear-gradient(135deg, #F09E38 0%, #E28418 50%, #D4821A 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: #f5edf3;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: #dabed3;
+  border-radius: 4px;
+  border: 1px solid #f5edf3;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a8729b;
+}
+
+/* Subtle Animated Shimmer for Badges */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer-badge {
+  background: linear-gradient(90deg, rgba(240,158,56,0.15) 0%, rgba(240,158,56,0.35) 50%, rgba(240,158,56,0.15) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 3s infinite;
+}
+
+/* Scanner Radar Sweep Animation */
+@keyframes radarSweep {
+  0% { transform: translateY(-100%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(250%); opacity: 0; }
+}
+
+.scanner-laser {
+  animation: radarSweep 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Solar Cell Grid Styling */
+.solar-cell {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 1px solid #38bdf8;
+  position: relative;
+  overflow: hidden;
+}
+.solar-cell::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 40%, rgba(240, 158, 56, 0.25) 50%, transparent 60%);
+  background-size: 200% 200%;
+  animation: shimmer 4s infinite;
 }

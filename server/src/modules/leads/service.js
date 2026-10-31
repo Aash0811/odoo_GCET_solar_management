@@ -260,7 +260,7 @@ async function updateStage(companyId, id, stageData, actorId, req = null) {
 }
 
 async function archiveLead(companyId, id, actorId, req = null) {
-  // Business Rule 1: Leads are NEVER hard-deleted (archive only).
+
   const lead = await getLeadById(companyId, id);
 
   return await prisma.$transaction(async (tx) => {

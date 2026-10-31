@@ -131,7 +131,7 @@ export default function MobileInstallFormPage() {
   if (loading || !job) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="w-8 h-8 border-4 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-4 border-[#714b67] border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -141,12 +141,12 @@ export default function MobileInstallFormPage() {
   return (
     <div className="max-w-xl mx-auto space-y-5 pb-12">
       {/* Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+      <div className="flex items-center justify-between pb-3 border-b border-[#ebdce6]">
         <button onClick={() => navigate('/technician/jobs')} className="text-xs font-semibold text-slate-600 flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" /> Back to Jobs
         </button>
         <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-          isCompleted ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+          isCompleted ? 'bg-emerald-100 text-emerald-800' : 'bg-purple-100 text-[#714b67]'
         }`}>
           {job.status}
         </span>
@@ -171,7 +171,7 @@ export default function MobileInstallFormPage() {
             href={jobsApi.downloadCertificateUrl(job.id)}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shadow-md"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#714b67] hover:bg-[#5e3d55] text-white font-bold text-xs shadow-md shadow-[#714b67]/25"
           >
             <Download className="w-4 h-4" /> Download Official Certificate (PDF)
           </a>
@@ -181,7 +181,7 @@ export default function MobileInstallFormPage() {
           {/* Engineering Checklist (Rule 7) */}
           <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
             <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-sky-600" /> Mandatory Engineering Checklist (100% Required)
+              <CheckCircle2 className="w-4 h-4 text-[#714b67]" /> Mandatory Engineering Checklist (100% Required)
             </h2>
 
             <div className="space-y-2">
@@ -197,7 +197,7 @@ export default function MobileInstallFormPage() {
                     type="checkbox"
                     checked={checklist[item.key]}
                     onChange={(e) => setChecklist({ ...checklist, [item.key]: e.target.checked })}
-                    className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500"
+                    className="w-4 h-4 rounded text-[#714b67] focus:ring-[#714b67]"
                   />
                   <span className="font-semibold text-slate-800">{item.label}</span>
                 </label>
@@ -233,12 +233,12 @@ export default function MobileInstallFormPage() {
           {/* Site Photos Upload (Rule 7) */}
           <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
             <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-              <Camera className="w-4 h-4 text-sky-600" /> Site Commissioning Photos (≥ 1 Mandatory)
+              <Camera className="w-4 h-4 text-[#714b67]" /> Site Commissioning Photos (≥ 1 Mandatory)
             </h2>
 
-            <label className="p-4 rounded-xl border-2 border-dashed border-sky-300 bg-sky-50/30 flex flex-col items-center justify-center cursor-pointer hover:bg-sky-50">
-              <Upload className="w-5 h-5 text-sky-600 mb-1" />
-              <span className="font-bold text-sky-700">Tap to Capture / Upload Site Photo</span>
+            <label className="p-4 rounded-xl border-2 border-dashed border-[#dabfd2] bg-[#f5edf2]/30 flex flex-col items-center justify-center cursor-pointer hover:bg-[#f5edf2]">
+              <Upload className="w-5 h-5 text-[#714b67] mb-1" />
+              <span className="font-bold text-[#714b67]">Tap to Capture / Upload Site Photo</span>
               <span className="text-[10px] text-slate-400">Array view, inverter mounting, or earthing</span>
               <input type="file" accept="image/*" multiple capture="environment" onChange={handlePhotoSelect} className="hidden" />
             </label>
@@ -256,7 +256,7 @@ export default function MobileInstallFormPage() {
           <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                <PenTool className="w-4 h-4 text-sky-600" /> Customer Acceptance Signature Canvas
+                <PenTool className="w-4 h-4 text-[#714b67]" /> Customer Acceptance Signature Canvas
               </h2>
               <button
                 type="button"

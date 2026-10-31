@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ticketsApi, warrantyApi, inventoryApi } from '../../api';
+import { ticketsApi, warrantyApi } from '../../api';
 import {
   HeadphonesIcon,
   Search,
@@ -11,6 +11,11 @@ import {
   FileText,
   RefreshCw,
   X,
+  Clock,
+  Sparkles,
+  Zap,
+  Receipt,
+  User,
 } from 'lucide-react';
 
 export default function ServiceDeskPage() {
@@ -38,7 +43,7 @@ export default function ServiceDeskPage() {
 
   // Resolve form (Rule 8 unit replacement swap)
   const [resolveForm, setResolveForm] = useState({
-    resolutionNotes: 'Components replaced and recalibrated.',
+    resolutionNotes: 'Components inspected, replaced and recalibrated to factory spec.',
     replacedSerialId: '',
     newSerialString: '',
   });
@@ -63,7 +68,7 @@ export default function ServiceDeskPage() {
   }, []);
 
   const handleSearchWarranty = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!searchQuery.trim()) return;
     setSearching(true);
     try {
@@ -83,7 +88,6 @@ export default function ServiceDeskPage() {
       alert(res.data?.message || 'Line added!');
       setAddLineModal(false);
       loadTickets();
-      // reload detail
       const tRes = await ticketsApi.get(selectedTicket.id);
       setSelectedTicket(tRes.data?.data);
     } catch (err) {
@@ -95,7 +99,7 @@ export default function ServiceDeskPage() {
     e.preventDefault();
     try {
       const res = await ticketsApi.resolve(selectedTicket.id, resolveForm);
-      alert(res.data?.message || 'Ticket resolved!');
+      alert(res.data?.message || 'Ticket resolved and automations executed!');
       setResolveModal(false);
       loadTickets();
       const tRes = await ticketsApi.get(selectedTicket.id);
@@ -108,64 +112,108 @@ export default function ServiceDeskPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="w-8 h-8 border-4 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-10 h-10 border-4 border-[#714B67] border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="pb-3 border-b border-slate-200">
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Service Desk & Warranty Lookup</h1>
-        <p className="text-xs text-slate-500">
-          Rule 8: Instant warranty check (Active/Expired + days left) | In-warranty parts=0 vs Expired invoice generation
-        </p>
+      {/* Top Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-[#EBDCE7]">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#714B67] animate-pulse"></span>
+            <h1 className="text-2xl font-black text-[#241621] tracking-tight">Solar Service Desk & Warranty Engine</h1>
+          </div>
+          <p className="text-xs text-[#714B67] font-medium mt-0.5">
+            Rule 8: Instant Warranty Validation • In-Warranty Free Replacement (₹0.00) vs Expired Invoice Generation
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="px-3 py-1 rounded-full bg-[#F5EDF3] border border-[#EBDCE7] text-xs font-black text-[#714B67] flex items-center gap-1.5">
+            <ShieldCheck className="w-4 h-4 text-[#10B981]" /> Automated SLA Manager
+          </span>
+        </div>
       </div>
 
       {/* Real-time Warranty Search Bar (Rule 8) */}
-      <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
-        <form onSubmit={handleSearchWarranty} className="flex gap-2">
+      <div className="p-6 rounded-2xl odoo-glass-card space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-black text-[#241621] flex items-center gap-2">
+            <Search className="w-4 h-4 text-[#714B67]" /> Universal Warranty Lookup Engine (Rule 8)
+          </h2>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-[#b886ad] font-bold">Quick Search:</span>
+            {['INV3K-SN-001', 'Vikram Reddy'].map((demo) => (
+              <button
+                key={demo}
+                type="button"
+                onClick={() => {
+                  setSearchQuery(demo);
+                }}
+                className="px-2.5 py-0.5 rounded-md bg-[#FAF6F9] border border-[#EBDCE7] text-[11px] font-bold text-[#714B67] hover:bg-[#F5EDF3] cursor-pointer"
+              >
+                {demo}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <form onSubmit={handleSearchWarranty} className="flex gap-2.5">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-[#b886ad]" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Lookup by customer name, phone (9876543210), or serial number (INV3K-SN-001)..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-sky-500 outline-none"
+              placeholder="Enter customer name, phone number (e.g. 9876543210), or hardware serial (e.g. INV3K-SN-001)..."
+              className="w-full pl-10 pr-4 py-3 rounded-xl border border-[#EBDCE7] bg-[#FAF6F9] text-xs text-[#241621] font-semibold focus:ring-2 focus:ring-[#714B67] outline-none shadow-xs"
             />
           </div>
           <button
             type="submit"
             disabled={searching}
-            className="px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs"
+            className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#714B67] to-[#855278] hover:opacity-95 text-white font-black text-xs shadow-md shadow-[#714B67]/25 transition cursor-pointer"
           >
-            {searching ? 'Searching...' : 'Lookup'}
+            {searching ? 'Checking...' : 'Check Warranty'}
           </button>
         </form>
 
+        {/* Search Results Display */}
         {searchResults.length > 0 && (
-          <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100 mt-3 text-xs">
-            <div className="bg-slate-50 p-2.5 grid grid-cols-12 font-bold text-[10px] text-slate-500 uppercase">
+          <div className="border border-[#EBDCE7] rounded-2xl overflow-hidden divide-y divide-[#EBDCE7]/60 mt-3 text-xs bg-white shadow-xs">
+            <div className="bg-[#F5EDF3] p-3 grid grid-cols-12 font-black text-[10px] text-[#714B67] uppercase tracking-wider">
               <div className="col-span-3">Customer</div>
               <div className="col-span-3">Serial Number</div>
-              <div className="col-span-3">Product</div>
+              <div className="col-span-3">Equipment</div>
               <div className="col-span-3 text-right">Warranty Status</div>
             </div>
             {searchResults.map((w) => (
-              <div key={w.id} className="p-2.5 grid grid-cols-12 items-center">
-                <div className="col-span-3 font-semibold text-slate-900 truncate">{w.customer?.name}</div>
-                <div className="col-span-3 font-mono font-bold text-slate-700">{w.serial}</div>
-                <div className="col-span-3 text-slate-500 truncate">{w.product?.name}</div>
+              <div key={w.id} className="p-3 grid grid-cols-12 items-center hover:bg-[#FAF6F9] transition-colors">
+                <div className="col-span-3 font-extrabold text-[#241621] truncate">{w.customer?.name}</div>
+                <div className="col-span-3 font-mono font-black text-[#714B67]">{w.serial}</div>
+                <div className="col-span-3 text-slate-600 truncate font-medium">{w.product?.name}</div>
                 <div className="col-span-3 text-right">
                   <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    className={`px-3 py-1 rounded-full text-[11px] font-black inline-flex items-center gap-1.5 ${
                       w.status === 'ACTIVE'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-rose-100 text-rose-800'
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : 'bg-rose-100 text-rose-800 border border-rose-300'
                     }`}
                   >
-                    {w.status === 'ACTIVE' ? `ACTIVE (${w.daysLeft}d left)` : `EXPIRED (${w.expiredDaysAgo}d ago)`}
+                    {w.status === 'ACTIVE' ? (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        ACTIVE ({w.daysLeft} days remaining)
+                      </>
+                    ) : (
+                      <>
+                        <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+                        EXPIRED ({w.expiredDaysAgo} days ago)
+                      </>
+                    )}
                   </span>
                 </div>
               </div>
@@ -178,8 +226,12 @@ export default function ServiceDeskPage() {
       <div className="grid lg:grid-cols-12 gap-6">
         {/* Left 5 cols: Tickets List */}
         <div className="lg:col-span-5 space-y-3">
-          <h2 className="text-sm font-bold text-slate-900">Active Service Tickets ({tickets.length})</h2>
-          <div className="space-y-2.5 overflow-y-auto max-h-[70vh]">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black text-[#241621]">Service Tickets ({tickets.length})</h2>
+            <span className="text-[11px] font-bold text-[#b886ad]">Solar Support Desk</span>
+          </div>
+
+          <div className="space-y-2.5 overflow-y-auto max-h-[72vh] pr-1">
             {tickets.map((t) => (
               <button
                 key={t.id}
@@ -187,24 +239,31 @@ export default function ServiceDeskPage() {
                   const res = await ticketsApi.get(t.id);
                   setSelectedTicket(res.data?.data);
                 }}
-                className={`w-full p-4 rounded-xl border text-left transition-all ${
+                className={`w-full p-4 rounded-2xl border text-left transition-all cursor-pointer ${
                   selectedTicket?.id === t.id
-                    ? 'bg-sky-50/80 border-sky-500 shadow-sm'
-                    : 'bg-white border-slate-200 hover:border-slate-300'
+                    ? 'bg-gradient-to-r from-[#F5EDF3] to-white border-[#714B67] shadow-md ring-2 ring-[#714B67]/20'
+                    : 'bg-white border-[#EBDCE7] hover:border-[#b886ad]'
                 }`}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-bold text-xs text-slate-900">{t.ticketNumber}</span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                    t.status === 'RESOLVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                  }`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-black text-xs text-[#714B67] font-mono">{t.ticketNumber}</span>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      t.status === 'RESOLVED'
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        : 'bg-amber-100 text-amber-800 border border-amber-200'
+                    }`}
+                  >
                     {t.status}
                   </span>
                 </div>
-                <h3 className="text-xs font-semibold text-slate-800 line-clamp-1">{t.title}</h3>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Customer: <span className="font-medium text-slate-700">{t.customer?.name}</span> ({t.ageDays} days old)
-                </p>
+                <h3 className="text-xs font-black text-[#241621] line-clamp-1">{t.title}</h3>
+                <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2 pt-2 border-t border-[#EBDCE7]/50">
+                  <span className="font-bold text-[#241621] flex items-center gap-1">
+                    <User className="w-3 h-3 text-[#714B67]" /> {t.customer?.name}
+                  </span>
+                  <span className="text-[10px] text-[#b886ad] font-mono">{t.ageDays} days old</span>
+                </div>
               </button>
             ))}
           </div>
@@ -212,32 +271,36 @@ export default function ServiceDeskPage() {
 
         {/* Right 7 cols: Ticket Resolution & Warranty Line Engine */}
         {selectedTicket && (
-          <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 text-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="lg:col-span-7 odoo-glass-card p-6 rounded-2xl space-y-5 text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#EBDCE7]">
               <div>
-                <span className="text-[10px] font-mono text-slate-400">TICKET DETAILS</span>
-                <h2 className="text-base font-bold text-slate-900">{selectedTicket.ticketNumber}: {selectedTicket.title}</h2>
-                <p className="text-slate-500 text-[11px]">Customer: {selectedTicket.customer?.name} ({selectedTicket.customer?.phone})</p>
+                <span className="text-[10px] font-mono text-[#b886ad] font-bold">TICKET WORKBENCH</span>
+                <h2 className="text-base font-black text-[#241621]">
+                  {selectedTicket.ticketNumber}: {selectedTicket.title}
+                </h2>
+                <p className="text-slate-600 text-[11px] mt-0.5">
+                  Customer: <span className="font-bold text-[#714B67]">{selectedTicket.customer?.name}</span> ({selectedTicket.customer?.phone})
+                </p>
               </div>
 
               {selectedTicket.status !== 'RESOLVED' && selectedTicket.status !== 'CLOSED' && (
                 <div className="flex gap-2">
                   <button
                     onClick={() => setAddLineModal(true)}
-                    className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold"
+                    className="px-3 py-1.5 rounded-xl bg-[#FAF6F9] hover:bg-[#F5EDF3] text-[#714B67] border border-[#EBDCE7] font-black cursor-pointer transition"
                   >
-                    + Add Line
+                    + Add Part/Labour
                   </button>
                   <button
                     onClick={() => {
                       setResolveForm({
-                        resolutionNotes: 'Repaired and recalibrated components.',
+                        resolutionNotes: 'Hardware replacement executed and system tested at peak sun hours.',
                         replacedSerialId: selectedTicket.lines?.[0]?.serialNumberId || '',
                         newSerialString: '',
                       });
                       setResolveModal(true);
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+                    className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-md shadow-emerald-600/25 transition cursor-pointer"
                   >
                     Resolve Ticket
                   </button>
@@ -245,42 +308,42 @@ export default function ServiceDeskPage() {
               )}
             </div>
 
-            <p className="text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-100 italic">
-              "{selectedTicket.description || 'No description provided.'}"
+            <p className="text-slate-800 bg-[#FAF6F9] p-3.5 rounded-xl border border-[#EBDCE7] italic font-medium">
+              "{selectedTicket.description || 'No complaint notes entered.'}"
             </p>
 
             {/* Billable & Warranty Lines (Rule 8) */}
-            <div>
-              <h3 className="font-bold text-slate-900 mb-2 uppercase tracking-wider text-[11px]">
-                Parts & Labour Lines (Rule 8 Auto-Pricing)
+            <div className="space-y-2">
+              <h3 className="font-black text-[#241621] uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <Receipt className="w-3.5 h-3.5 text-[#714B67]" /> Parts & Labour Lines (Rule 8 Auto-Pricing)
               </h3>
-              <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
-                <div className="bg-slate-50 p-2.5 grid grid-cols-12 font-bold text-[10px] text-slate-500 uppercase">
+              <div className="border border-[#EBDCE7] rounded-2xl overflow-hidden divide-y divide-[#EBDCE7]/60 bg-white shadow-xs">
+                <div className="bg-[#F5EDF3] p-2.5 grid grid-cols-12 font-black text-[10px] text-[#714B67] uppercase tracking-wider">
                   <div className="col-span-6">Description</div>
                   <div className="col-span-3 text-center">Warranty Status</div>
                   <div className="col-span-3 text-right">Price Charged</div>
                 </div>
 
                 {selectedTicket.lines?.length === 0 ? (
-                  <div className="p-4 text-center text-slate-400">No parts or labour lines added.</div>
+                  <div className="p-4 text-center text-[#b886ad] font-medium">No replacement parts or service labour logged.</div>
                 ) : (
                   selectedTicket.lines?.map((line) => (
-                    <div key={line.id} className="p-2.5 grid grid-cols-12 items-center">
-                      <div className="col-span-6 font-medium text-slate-800">
+                    <div key={line.id} className="p-3 grid grid-cols-12 items-center hover:bg-[#FAF6F9] transition-colors">
+                      <div className="col-span-6 font-bold text-[#241621]">
                         {line.description}
                       </div>
                       <div className="col-span-3 text-center">
                         {line.isWarrantyCovered ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                            Covered (Free)
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Covered (Free ₹0)
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-200">
                             Out of Warranty
                           </span>
                         )}
                       </div>
-                      <div className="col-span-3 text-right font-bold text-slate-900">
+                      <div className="col-span-3 text-right font-black text-[#714B67]">
                         ₹{Number(line.lineTotal).toLocaleString()}
                       </div>
                     </div>
@@ -291,12 +354,17 @@ export default function ServiceDeskPage() {
 
             {/* Linked Invoice if Generated */}
             {selectedTicket.invoices?.length > 0 && (
-              <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-purple-900">
-                  <FileText className="w-4 h-4 text-purple-600" />
-                  Auto-Generated Invoice: <span className="font-bold">{selectedTicket.invoices[0].invoiceNumber}</span>
+              <div className="p-4 bg-gradient-to-r from-purple-50 to-white rounded-2xl border border-purple-200 flex items-center justify-between text-xs shadow-xs">
+                <div className="flex items-center gap-2.5 text-purple-950">
+                  <FileText className="w-5 h-5 text-[#714B67]" />
+                  <div>
+                    <span className="font-bold text-[10px] text-purple-600 block">AUTOMATIC OUT-OF-WARRANTY INVOICE</span>
+                    <span className="font-black text-sm">{selectedTicket.invoices[0].invoiceNumber}</span>
+                  </div>
                 </div>
-                <span className="font-bold text-purple-800">₹{Number(selectedTicket.invoices[0].totalAmount).toLocaleString()}</span>
+                <span className="font-black text-base text-[#714B67]">
+                  ₹{Number(selectedTicket.invoices[0].totalAmount).toLocaleString()}
+                </span>
               </div>
             )}
           </div>
@@ -305,60 +373,63 @@ export default function ServiceDeskPage() {
 
       {/* Add Line Modal */}
       {addLineModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-xs">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-base font-bold text-slate-900">Add Service Line</h3>
-              <button onClick={() => setAddLineModal(false)} className="text-slate-400">
+        <div className="fixed inset-0 bg-[#22151F]/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#EBDCE7] text-xs">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#EBDCE7]">
+              <div className="flex items-center gap-2">
+                <Plus className="w-5 h-5 text-[#714B67]" />
+                <h3 className="text-base font-black text-[#241621]">Add Service Line</h3>
+              </div>
+              <button onClick={() => setAddLineModal(false)} className="text-[#b886ad] cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <p className="text-slate-500 mb-3 text-[11px]">
-              Rule 8: If this line links to an active warranty serial, the charge will automatically be ₹0.00.
+            <p className="text-slate-600 mb-3 text-[11px]">
+              Rule 8 Enforcement: If linked to an active warranty hardware unit, this line charge is automatically waived to <strong className="text-emerald-700">₹0.00</strong>.
             </p>
 
-            <form onSubmit={handleAddLine} className="space-y-3">
+            <form onSubmit={handleAddLine} className="space-y-3.5">
               <div>
-                <label className="font-semibold text-slate-700 mb-1 block">Line Type</label>
+                <label className="font-extrabold text-[#241621] mb-1 block">Line Type</label>
                 <select
                   value={lineForm.type}
                   onChange={(e) => setLineForm({ ...lineForm, type: e.target.value })}
-                  className="w-full p-2.5 rounded-lg border border-slate-300 bg-white"
+                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] bg-white font-semibold outline-none focus:ring-2 focus:ring-[#714B67]"
                 >
-                  <option value="PART">Replacement Part / Component</option>
-                  <option value="LABOUR">Technician Service Labour</option>
-                  <option value="OTHER">Other / Travel</option>
+                  <option value="PART">Replacement Component / Spare Part</option>
+                  <option value="LABOUR">Field Technician Labour</option>
+                  <option value="OTHER">Travel & Transport Fee</option>
                 </select>
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 mb-1 block">Description</label>
+                <label className="font-extrabold text-[#241621] mb-1 block">Component / Task Description</label>
                 <input
                   type="text"
                   required
                   value={lineForm.description}
                   onChange={(e) => setLineForm({ ...lineForm, description: e.target.value })}
-                  placeholder="e.g. Inverter Relay Board Replacement"
-                  className="w-full p-2.5 rounded-lg border border-slate-300"
+                  placeholder="e.g. Inverter MPPT Control Board Swap"
+                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] outline-none focus:ring-2 focus:ring-[#714B67]"
                 />
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 mb-1 block">Standard Part Price (₹)</label>
+                <label className="font-extrabold text-[#241621] mb-1 block">Catalog Rate (₹)</label>
                 <input
                   type="number"
                   required
                   value={lineForm.unitPrice}
                   onChange={(e) => setLineForm({ ...lineForm, unitPrice: e.target.value })}
-                  className="w-full p-2.5 rounded-lg border border-slate-300"
+                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] font-bold text-sm outline-none focus:ring-2 focus:ring-[#714B67]"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full mt-2 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold"
+                className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-[#714B67] to-[#855278] hover:opacity-95 text-white font-black shadow-md shadow-[#714B67]/25 cursor-pointer"
               >
-                Add Line (Apply Warranty Rule)
+                Apply Line & Check Warranty Coverage
               </button>
             </form>
           </div>
@@ -367,47 +438,50 @@ export default function ServiceDeskPage() {
 
       {/* Resolve Ticket Modal (Rule 8 Serial Swap) */}
       {resolveModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-xs">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-base font-bold text-slate-900">Resolve Ticket & Unit Swap</h3>
-              <button onClick={() => setResolveModal(false)} className="text-slate-400">
+        <div className="fixed inset-0 bg-[#22151F]/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#EBDCE7] text-xs">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#EBDCE7]">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-base font-black text-[#241621]">Resolve Ticket & Unit Swap</h3>
+              </div>
+              <button onClick={() => setResolveModal(false)} className="text-[#b886ad] cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-slate-500 mb-3 text-[11px]">
-              Resolving will automatically invoice any out-of-warranty lines. If replacing a hardware unit, enter the new serial to start its new warranty!
+            <p className="text-slate-600 mb-3 text-[11px]">
+              Resolving will automatically invoice any billable out-of-warranty lines. If replacing a hardware unit, enter the replacement serial to transfer/start its new warranty!
             </p>
 
-            <form onSubmit={handleResolveTicket} className="space-y-3">
+            <form onSubmit={handleResolveTicket} className="space-y-3.5">
               <div>
-                <label className="font-semibold text-slate-700 mb-1 block">Resolution Notes</label>
+                <label className="font-extrabold text-[#241621] mb-1 block">Technician Resolution Notes</label>
                 <textarea
                   rows="3"
                   required
                   value={resolveForm.resolutionNotes}
                   onChange={(e) => setResolveForm({ ...resolveForm, resolutionNotes: e.target.value })}
-                  className="w-full p-2.5 rounded-lg border border-slate-300"
+                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] outline-none focus:ring-2 focus:ring-[#714B67]"
                 />
               </div>
 
-              <div className="p-3 bg-sky-50 rounded-xl border border-sky-100 space-y-2">
-                <span className="font-bold text-sky-900 flex items-center gap-1">
-                  <RefreshCw className="w-3.5 h-3.5" /> Unit Replacement Serial Swap (Optional)
+              <div className="p-3.5 bg-[#FAF6F9] rounded-2xl border border-[#EBDCE7] space-y-2">
+                <span className="font-black text-[#714B67] flex items-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5 text-[#f09e38]" /> Hardware Replacement Serial Swap (Optional)
                 </span>
                 <input
                   type="text"
                   value={resolveForm.newSerialString}
                   onChange={(e) => setResolveForm({ ...resolveForm, newSerialString: e.target.value })}
-                  placeholder="New Serial Number (e.g. INV3K-SN-NEW)"
-                  className="w-full p-2 rounded-lg border border-slate-300 bg-white"
+                  placeholder="New Serial Number (e.g. INV3K-SN-NEW99)"
+                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] bg-white font-mono text-xs outline-none focus:ring-2 focus:ring-[#714B67]"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full mt-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+                className="w-full mt-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md shadow-emerald-600/25 cursor-pointer"
               >
                 Confirm Resolution & Execute Automations
               </button>
