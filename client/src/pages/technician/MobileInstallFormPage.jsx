@@ -158,7 +158,7 @@ export default function MobileInstallFormPage() {
       </div>
 
       {isCompleted ? (
-        <div className="p-6 bg-white rounded-2xl border border-emerald-200 shadow-sm space-y-4 text-center">
+        <div className="p-6 bg-white rounded-2xl border border-emerald-200 shadow-sm space-y-5 text-center">
           <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
             <CheckCircle2 className="w-7 h-7" />
           </div>
@@ -166,6 +166,55 @@ export default function MobileInstallFormPage() {
             <h2 className="text-base font-bold text-slate-900">Job Verified & Commissioned</h2>
             <p className="text-xs text-slate-500 mt-1">All engineering safety checks passed and customer signed off.</p>
           </div>
+
+          {/* Installation Photos Gallery */}
+          {job.photos && job.photos.length > 0 && (
+            <div className="text-left pt-3 border-t border-slate-100 space-y-2">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                <Camera className="w-4 h-4 text-[#714b67]" /> Installed Equipment & Commissioning Photos ({job.photos.length})
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {job.photos.map((photo, idx) => (
+                  <div key={photo.id || idx} className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-2xs group relative">
+                    <img
+                      src={photo.url}
+                      alt={photo.caption || `Installation photo ${idx + 1}`}
+                      className="w-full h-28 object-cover group-hover:scale-105 transition-transform"
+                    />
+                    {photo.caption && (
+                      <div className="p-1.5 text-[10px] text-slate-600 font-medium truncate bg-white/95">
+                        {photo.caption}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Customer Signature Display */}
+          {job.signature && (
+            <div className="text-left pt-3 border-t border-slate-100 space-y-2">
+              <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                <PenTool className="w-4 h-4 text-emerald-600" /> Customer Acceptance Sign-off
+              </h3>
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-slate-900">{job.signature.signedByName}</p>
+                  <p className="text-[10px] text-slate-500">
+                    Signed on {new Date(job.signature.signedAt).toLocaleString()}
+                  </p>
+                </div>
+                {job.signature.imageUrl && (
+                  <img
+                    src={job.signature.imageUrl}
+                    alt="Customer Signature"
+                    className="h-10 max-w-[120px] object-contain border border-slate-200 rounded bg-white p-1"
+                  />
+                )}
+              </div>
+            </div>
+          )}
 
           <a
             href={jobsApi.downloadCertificateUrl(job.id)}
@@ -243,11 +292,32 @@ export default function MobileInstallFormPage() {
               <input type="file" accept="image/*" multiple capture="environment" onChange={handlePhotoSelect} className="hidden" />
             </label>
 
+            {/* Existing Uploaded Photos */}
+            {job.photos && job.photos.length > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold text-slate-600 block">
+                  Previously Uploaded Photos ({job.photos.length}):
+                </span>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {job.photos.map((p, idx) => (
+                    <div key={p.id || idx} className="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 shrink-0">
+                      <img src={p.url} alt={p.caption || 'Site Photo'} className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {photoPreviews.length > 0 && (
-              <div className="flex gap-2 overflow-x-auto pt-2">
-                {photoPreviews.map((src, i) => (
-                  <img key={i} src={src} alt="Preview" className="w-16 h-16 rounded-lg object-cover border border-slate-200 shrink-0" />
-                ))}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold text-slate-600 block">
+                  New Photos to Submit ({photoPreviews.length}):
+                </span>
+                <div className="flex gap-2 overflow-x-auto pt-1">
+                  {photoPreviews.map((src, i) => (
+                    <img key={i} src={src} alt="Preview" className="w-16 h-16 rounded-lg object-cover border border-emerald-300 ring-1 ring-emerald-400 shrink-0" />
+                  ))}
+                </div>
               </div>
             )}
           </div>

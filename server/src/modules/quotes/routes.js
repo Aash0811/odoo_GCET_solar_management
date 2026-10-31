@@ -5,6 +5,7 @@ const authenticate = require("../../middleware/auth");
 const companyScope = require("../../middleware/companyScope");
 const requireRole = require("../../middleware/requireRole");
 const validate = require("../../middleware/validate");
+const { upload } = require("../../middleware/upload");
 const {
   createQuoteSchema,
   updateQuoteLinesSchema,
@@ -38,5 +39,26 @@ router.patch("/:id/approve-discount", requireRole("ADMIN"), validate(approveDisc
 router.post("/:id/accept", requireRole("ADMIN", "SALESMAN", "CUSTOMER"), validate(acceptQuoteSchema), quotesController.acceptQuote);
 router.post("/:id/reject", requireRole("ADMIN", "SALESMAN", "CUSTOMER"), validate(rejectQuoteSchema), quotesController.rejectQuote);
 router.patch("/:id/status", requireRole("ADMIN", "SALESMAN"), validate(updateQuoteStatusSchema), quotesController.updateQuoteStatus);
+
+// ─── Quote Photo Routes ──────────────────────────────────────
+// Upload up to 10 roof/site condition photos for a quote
+router.post(
+  "/:id/photos",
+  requireRole("ADMIN", "SALESMAN", "TECHNICIAN"),
+  upload.array("photos", 10),
+  quotesController.uploadQuotePhoto
+);
+// View photos (sales, technicians, admin, support, customer)
+router.get(
+  "/:id/photos",
+  requireRole("ADMIN", "SALESMAN", "TECHNICIAN", "SUPPORT", "CUSTOMER"),
+  quotesController.listQuotePhotos
+);
+// Delete a specific photo
+router.delete(
+  "/:id/photos/:photoId",
+  requireRole("ADMIN", "SALESMAN"),
+  quotesController.deleteQuotePhoto
+);
 
 module.exports = router;

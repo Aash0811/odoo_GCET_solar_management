@@ -88,6 +88,7 @@ export default function AppRoutes() {
           {/* Warehouse routes */}
           <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'WAREHOUSE']} />}>
             <Route path="/warehouse/dispatch" element={<PickListDispatchPage />} />
+            <Route path="/warehouse/inventory" element={<PickListDispatchPage defaultTab="warehouses" />} />
           </Route>
 
           {/* Technician routes */}

@@ -151,6 +151,47 @@ async function downloadQuotePdf(req, res, next) {
   }
 }
 
+async function uploadQuotePhoto(req, res, next) {
+  try {
+    const photos = await quotesService.uploadQuotePhoto(
+      req.companyId,
+      req.params.id,
+      req.files,
+      req.body.caption,
+      req.body.phase,
+      req.user.id,
+      req
+    );
+    return res.status(201).json({ success: true, message: "Photos uploaded successfully.", data: photos });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function listQuotePhotos(req, res, next) {
+  try {
+    const photos = await quotesService.getQuotePhotos(req.companyId, req.params.id);
+    return res.status(200).json({ success: true, data: photos });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function deleteQuotePhoto(req, res, next) {
+  try {
+    await quotesService.deleteQuotePhoto(
+      req.companyId,
+      req.params.id,
+      req.params.photoId,
+      req.user.id,
+      req
+    );
+    return res.status(200).json({ success: true, message: "Photo deleted." });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   listQuotes,
   getQuote,
@@ -164,4 +205,7 @@ module.exports = {
   rejectSharedQuote,
   updateQuoteStatus,
   downloadQuotePdf,
+  uploadQuotePhoto,
+  listQuotePhotos,
+  deleteQuotePhoto,
 };

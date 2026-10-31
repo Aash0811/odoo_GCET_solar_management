@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const prisma = require("../../config/prisma");
 const { recordAuditLog } = require("../../utils/audit");
 const { generateQuotePdf } = require("../../utils/pdf");
+const { uploadToCloudinary } = require("../../middleware/upload");
 
 const MAX_AUTO_DISCOUNT = 10000; // Discounts above ₹10,000 require manager approval
 
@@ -81,6 +82,9 @@ async function getQuoteById(companyId, id, userRole = "ADMIN") {
       },
       orders: {
         select: { id: true, orderNumber: true, status: true },
+      },
+      photos: {
+        orderBy: { uploadedAt: "asc" },
       },
     },
   });
@@ -673,6 +677,97 @@ async function getQuotePdfBuffer(companyId, id) {
   return await generateQuotePdf(quote, company);
 }
 
+// ─── Quote Photo Functions ────────────────────────────────────────────────────
+
+async function uploadQuotePhoto(companyId, quoteId, files, caption, phase, actorId, req) {
+  // Verify quote belongs to this company
+  const quote = await prisma.quote.findFirst({ where: { id: quoteId, companyId } });
+  if (!quote) {
+    const err = new Error("Quote not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (!files || files.length === 0) {
+    const err = new Error("No files provided.");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const uploadedPhotos = [];
+  for (const file of files) {
+    const uploadResult = await uploadToCloudinary(
+      file.buffer,
+      "solar_management/quote_photos",
+      `quote_${quoteId}_${Date.now()}`
+    );
+    const photo = await prisma.quotePhoto.create({
+      data: {
+        quoteId,
+        url: uploadResult.url,
+        publicId: uploadResult.publicId || null,
+        caption: caption || null,
+        phase: phase || "ROOF_CONDITION",
+      },
+    });
+    uploadedPhotos.push(photo);
+  }
+
+  await recordAuditLog(
+    {
+      companyId,
+      entityType: "Quote",
+      entityId: quoteId,
+      action: "DOCUMENT_UPLOADED",
+      actorId,
+      metadata: { count: uploadedPhotos.length, phase: phase || "ROOF_CONDITION" },
+    },
+    req
+  );
+
+  return uploadedPhotos;
+}
+
+async function getQuotePhotos(companyId, quoteId) {
+  const quote = await prisma.quote.findFirst({ where: { id: quoteId, companyId } });
+  if (!quote) {
+    const err = new Error("Quote not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  return prisma.quotePhoto.findMany({
+    where: { quoteId },
+    orderBy: { uploadedAt: "asc" },
+  });
+}
+
+async function deleteQuotePhoto(companyId, quoteId, photoId, actorId, req) {
+  const quote = await prisma.quote.findFirst({ where: { id: quoteId, companyId } });
+  if (!quote) {
+    const err = new Error("Quote not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  const photo = await prisma.quotePhoto.findFirst({ where: { id: photoId, quoteId } });
+  if (!photo) {
+    const err = new Error("Photo not found.");
+    err.statusCode = 404;
+    throw err;
+  }
+  await prisma.quotePhoto.delete({ where: { id: photoId } });
+  await recordAuditLog(
+    {
+      companyId,
+      entityType: "Quote",
+      entityId: quoteId,
+      action: "DELETE",
+      actorId,
+      metadata: { photoId },
+    },
+    req
+  );
+  return { deleted: true };
+}
+
 module.exports = {
   getQuotes,
   getQuoteById,
@@ -684,5 +779,8 @@ module.exports = {
   rejectQuote,
   updateQuoteStatus,
   getQuotePdfBuffer,
+  uploadQuotePhoto,
+  deleteQuotePhoto,
+  getQuotePhotos,
   MAX_AUTO_DISCOUNT,
 };

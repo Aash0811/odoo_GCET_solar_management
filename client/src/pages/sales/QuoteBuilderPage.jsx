@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { quotesApi, inventoryApi, leadsApi, ordersApi } from '../../api';
 import { useAuth } from '../../hooks/useAuth';
@@ -30,6 +30,9 @@ import {
   Search,
   Wand2,
   X,
+  Camera,
+  ImageIcon,
+  Upload,
 } from 'lucide-react';
 
 export default function QuoteBuilderPage() {
@@ -62,6 +65,13 @@ export default function QuoteBuilderPage() {
   const [productSearch, setProductSearch] = useState('');
   const [selectedAddProductId, setSelectedAddProductId] = useState('');
   const [addQty, setAddQty] = useState(1);
+
+  // Roof condition photo upload state
+  const [roofPhotos, setRoofPhotos] = useState([]);           // File objects
+  const [roofPreviews, setRoofPreviews] = useState([]);        // {url, name} for display
+  const [roofPhotoCaption, setRoofPhotoCaption] = useState('');
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const photoInputRef = useRef(null);
 
   const loadData = async () => {
     try {
@@ -190,6 +200,22 @@ export default function QuoteBuilderPage() {
     setProductSearch('');
   };
 
+  // ── Roof photo handlers ────────────────────────────────────────────────────
+  const handleRoofPhotoSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const combined = [...roofPhotos, ...files].slice(0, 10); // cap at 10
+    setRoofPhotos(combined);
+    const previews = combined.map((f) => ({ url: URL.createObjectURL(f), name: f.name }));
+    setRoofPreviews(previews);
+  };
+
+  const handleRemoveRoofPhoto = (idx) => {
+    const updated = roofPhotos.filter((_, i) => i !== idx);
+    setRoofPhotos(updated);
+    setRoofPreviews(updated.map((f) => ({ url: URL.createObjectURL(f), name: f.name })));
+  };
+
   // Financial calculations
   const subtotal = bomLines.reduce((sum, line) => sum + Number(line.lineTotal || 0), 0);
   const gstAmount = ((subtotal - Number(discountAmount || 0)) * 18) / 100;
@@ -228,12 +254,34 @@ export default function QuoteBuilderPage() {
       });
 
       const qNum = res.data?.data?.quoteNumber;
+      const qId = res.data?.data?.id;
       const qStatus = res.data?.data?.status;
+
+      // Upload roof photos if any were selected
+      if (roofPhotos.length > 0 && qId) {
+        setUploadingPhotos(true);
+        try {
+          const fd = new FormData();
+          roofPhotos.forEach((f) => fd.append('photos', f));
+          if (roofPhotoCaption) fd.append('caption', roofPhotoCaption);
+          fd.append('phase', 'ROOF_CONDITION');
+          await quotesApi.uploadPhotos(qId, fd);
+        } catch (photoErr) {
+          console.error('Photo upload failed (quote still created):', photoErr);
+        } finally {
+          setUploadingPhotos(false);
+        }
+      }
+
       setSuccessMsg(
         qStatus === 'PENDING_APPROVAL'
           ? `Quote ${qNum} generated in PENDING_APPROVAL status (Discount > ₹10,000 requires manager sign-off).`
-          : `Quote ${qNum} generated successfully!`
+          : `Quote ${qNum} generated successfully!${roofPhotos.length > 0 ? ` (${roofPhotos.length} roof photo(s) attached)` : ''}`
       );
+      // Reset photo state after successful creation
+      setRoofPhotos([]);
+      setRoofPreviews([]);
+      setRoofPhotoCaption('');
       loadData();
     } catch (err) {
       alert('Quote generation failed: ' + (err.response?.data?.message || err.message));
@@ -674,12 +722,84 @@ export default function QuoteBuilderPage() {
               )}
             </div>
 
+            {/* ── Roof Condition Photo Upload ─────────────────────────────── */}
+            <div className="bg-white rounded-2xl border border-[#EBDCE7] p-4 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-[#241621] flex items-center gap-2 text-xs">
+                  <Camera className="w-4 h-4 text-[#714B67]" />
+                  Roof Condition Photos
+                  <span className="text-[10px] font-semibold text-[#b886ad]">(for Technician & Survey Reference)</span>
+                </span>
+                <span className="text-[10px] font-bold text-[#b886ad]">
+                  {roofPhotos.length}/10 photos
+                </span>
+              </div>
+
+              {/* Drop / click zone */}
+              <div
+                onClick={() => photoInputRef.current?.click()}
+                className="relative flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed border-[#EBDCE7] bg-[#FAF6F9] hover:border-[#714B67] hover:bg-[#F5EDF3] transition-all cursor-pointer group"
+              >
+                <Upload className="w-6 h-6 text-[#b886ad] group-hover:text-[#714B67] transition-colors" />
+                <p className="text-[11px] font-bold text-[#714B67]">
+                  Click to upload roof photos
+                </p>
+                <p className="text-[10px] text-[#b886ad]">JPG, PNG, WEBP · Max 10MB each · Up to 10 photos</p>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleRoofPhotoSelect}
+                />
+              </div>
+
+              {/* Preview thumbnails */}
+              {roofPreviews.length > 0 && (
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                  {roofPreviews.map((p, idx) => (
+                    <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden border border-[#EBDCE7] shadow-xs">
+                      <img
+                        src={p.url}
+                        alt={p.name}
+                        className="w-full h-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRoofPhoto(idx)}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow cursor-pointer"
+                        title="Remove"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Caption input */}
+              {roofPhotos.length > 0 && (
+                <input
+                  type="text"
+                  value={roofPhotoCaption}
+                  onChange={(e) => setRoofPhotoCaption(e.target.value)}
+                  placeholder="Photo notes (e.g. 'East-facing flat RCC roof, partial shade from tank')"
+                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] text-xs focus:ring-2 focus:ring-[#714B67] outline-none"
+                />
+              )}
+
+              <p className="text-[10px] text-[#b886ad] font-medium flex items-center gap-1">
+                <ImageIcon className="w-3 h-3" />
+                Photos will be attached to the quote and visible to assigned technician &amp; survey team.
+              </p>
+            </div>
+
             <button
               type="submit"
               disabled={submitting || approvedLeads.length === 0}
               className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#714b67] via-[#855278] to-[#714b67] hover:opacity-95 text-white font-black text-xs shadow-lg shadow-[#714b67]/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <FileCheck2 className="w-4 h-4 text-[#f09e38]" />
+            >              <FileCheck2 className="w-4 h-4 text-[#f09e38]" />
               {submitting ? 'Generating Proposal...' : 'Save & Issue Official Quotation (PDF & Share Link)'}
             </button>
           </form>
@@ -746,11 +866,20 @@ export default function QuoteBuilderPage() {
                     <Calendar className="w-3 h-3 text-slate-400" />
                     Valid: {q.validUntil ? new Date(q.validUntil).toLocaleDateString() : '30 Days'}
                   </span>
-                  {isAdmin && q.marginAmount !== undefined && (
-                    <span className="font-mono text-[10px] font-bold text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
-                      Margin: ₹{Number(q.marginAmount).toLocaleString()} ({q.marginPercentage}%)
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {/* Roof photo badge */}
+                    {q.photos?.length > 0 && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-[10px] font-bold">
+                        <Camera className="w-3 h-3" />
+                        {q.photos.length} photo{q.photos.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {isAdmin && q.marginAmount !== undefined && (
+                      <span className="font-mono text-[10px] font-bold text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                        Margin: ₹{Number(q.marginAmount).toLocaleString()} ({q.marginPercentage}%)
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* High Discount Approval Gate Banner for Manager */}

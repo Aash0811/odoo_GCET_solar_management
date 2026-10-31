@@ -66,6 +66,7 @@ app.use("/api/v1/inventory", require("./modules/inventory/routes"));
 app.use("/api/v1/quotes", require("./modules/quotes/routes"));
 app.use("/api/v1/orders", require("./modules/orders/routes"));
 app.use("/api/v1/dispatch", require("./modules/dispatch/routes"));
+app.use("/api/v1/warehouses", require("./modules/warehouses/routes"));
 app.use("/api/v1/jobs", require("./modules/jobs/routes"));
 app.use("/api/v1/warranty", require("./modules/warranty/routes"));
 app.use("/api/v1/tickets", require("./modules/tickets/routes"));

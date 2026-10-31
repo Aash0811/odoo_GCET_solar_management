@@ -65,6 +65,13 @@ export const quotesApi = {
     const token = localStorage.getItem('sunpower_token');
     return `${apiClient.defaults.baseURL}/quotes/${id}/pdf${token ? `?token=${encodeURIComponent(token)}` : ''}`;
   },
+  // ── Photo endpoints ────────────────────────────────────────
+  uploadPhotos: (id, formData) =>
+    apiClient.post(`/quotes/${id}/photos`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  listPhotos: (id) => apiClient.get(`/quotes/${id}/photos`),
+  deletePhoto: (id, photoId) => apiClient.delete(`/quotes/${id}/photos/${photoId}`),
 };
 
 export const ordersApi = {
@@ -84,8 +91,20 @@ export const ordersApi = {
 export const dispatchApi = {
   listPickLists: (params) => apiClient.get('/dispatch/pick-lists', { params }),
   getPickList: (id) => apiClient.get(`/dispatch/pick-lists/${id}`),
+  assignWarehouse: (id, warehouseId) => apiClient.patch(`/dispatch/pick-lists/${id}/warehouse`, { warehouseId }),
+  pickItem: (id, data) => apiClient.post(`/dispatch/pick-lists/${id}/pick-item`, data),
   scanSerial: (data) => apiClient.post('/dispatch/scan-serial', data),
   validateDelivery: (orderId, data) => apiClient.post(`/dispatch/orders/${orderId}/validate-delivery`, data),
+};
+
+export const warehousesApi = {
+  list: (params) => apiClient.get('/warehouses', { params }),
+  get: (id) => apiClient.get(`/warehouses/${id}`),
+  create: (data) => apiClient.post('/warehouses', data),
+  update: (id, data) => apiClient.patch(`/warehouses/${id}`, data),
+  getStock: (id, params) => apiClient.get(`/warehouses/${id}/stock`, { params }),
+  addOrAdjustStock: (id, data) => apiClient.post(`/warehouses/${id}/stock`, data),
+  checkPickStock: (id, pickListId) => apiClient.get(`/warehouses/${id}/check-pick/${pickListId}`),
 };
 
 export const jobsApi = {

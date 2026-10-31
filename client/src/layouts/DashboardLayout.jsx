@@ -27,6 +27,7 @@ import {
   ArrowRight,
   Sliders,
   Globe,
+  Building2,
 } from 'lucide-react';
 
 const TOUR_STEPS = [
@@ -103,6 +104,7 @@ export default function DashboardLayout() {
     { label: 'Quote Builder', path: '/sales/quotes', icon: FileSpreadsheet, roles: ['SALESMAN'] },
     { label: 'Orders & Payments', path: '/sales/orders', icon: Receipt, roles: ['ADMIN', 'SALESMAN', 'ACCOUNTANT'] },
     { label: 'Warehouse & Dispatch', path: '/warehouse/dispatch', icon: Boxes, roles: ['ADMIN', 'WAREHOUSE'] },
+    { label: 'Multi-Zone Stock', path: '/warehouse/inventory', icon: Building2, roles: ['ADMIN', 'WAREHOUSE'] },
     { label: 'Installation Jobs', path: '/technician/jobs', icon: Wrench, roles: ['ADMIN', 'TECHNICIAN'] },
     { label: 'Service Desk & Tickets', path: '/support/tickets', icon: HeadphonesIcon, roles: ['ADMIN', 'SUPPORT'] },
     { label: 'Warranty Lookup', path: '/warranty/lookup', icon: ShieldCheck, roles: ['ADMIN', 'SUPPORT', 'SALESMAN'] },

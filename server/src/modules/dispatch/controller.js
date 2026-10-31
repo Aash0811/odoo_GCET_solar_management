@@ -70,9 +70,54 @@ async function validateDelivery(req, res, next) {
   }
 }
 
+async function pickItem(req, res, next) {
+  try {
+    const updatedLine = await dispatchService.pickItem(
+      req.companyId,
+      {
+        pickListId: req.params.id,
+        pickLineId: req.body.pickLineId,
+        quantity: req.body.quantity,
+      },
+      req.user.id,
+      req
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Picked ${req.body.quantity || 1} units of ${updatedLine.product.name}.`,
+      data: updatedLine,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function assignWarehouse(req, res, next) {
+  try {
+    const updatedPickList = await dispatchService.assignWarehouseToPickList(
+      req.companyId,
+      req.params.id,
+      req.body.warehouseId,
+      req.user.id,
+      req
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Assigned warehouse '${updatedPickList.warehouse?.name}' (${updatedPickList.warehouse?.city} - ${updatedPickList.warehouse?.zone}) to pick list ${updatedPickList.pickNumber}.`,
+      data: updatedPickList,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   listPickLists,
   getPickList,
   scanSerial,
+  pickItem,
+  assignWarehouse,
   validateDelivery,
 };

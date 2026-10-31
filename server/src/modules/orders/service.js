@@ -419,11 +419,30 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
     }
     const pickLinesToCreate = Array.from(productLineMap.values());
 
+    // Auto-match warehouse based on customer city, fallback to primary active warehouse
+    let defaultWarehouse = null;
+    if (order.customer?.city) {
+      defaultWarehouse = await tx.warehouse.findFirst({
+        where: {
+          companyId,
+          city: { equals: order.customer.city, mode: "insensitive" },
+          isActive: true,
+        },
+      });
+    }
+    if (!defaultWarehouse) {
+      defaultWarehouse = await tx.warehouse.findFirst({
+        where: { companyId, isActive: true },
+        orderBy: { createdAt: "asc" },
+      });
+    }
+
     const pickList = await tx.pickList.create({
       data: {
         companyId,
         orderId: order.id,
         createdById: creatorId,
+        warehouseId: defaultWarehouse?.id || null,
         pickNumber,
         status: "OPEN",
         lines: {
