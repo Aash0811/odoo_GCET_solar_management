@@ -14,7 +14,7 @@ const {
 
 router.use(authenticate);
 router.use(companyScope);
-\
+
 
 router.get(
   "/",
