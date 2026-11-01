@@ -6,9 +6,15 @@ const { generateInvoicePdf } = require("../../utils/pdf");
 // Job costing per order: profit = revenue - BOM cost - technician cost (hours x rate) - other costs.
 // Flag loss-making jobs.
 async function getJobCosting(companyId, filters = {}) {
-  const { orderId, isLossOnly } = filters;
+  const { orderId, isLossOnly, dateFilter } = filters;
   const where = { companyId };
   if (orderId) where.id = orderId;
+  if (dateFilter) {
+    where.OR = [
+      { confirmedAt: dateFilter },
+      { createdAt: dateFilter },
+    ];
+  }
 
   const orders = await prisma.salesOrder.findMany({
     where,
@@ -67,6 +73,8 @@ async function getJobCosting(companyId, filters = {}) {
       profit,
       profitMargin: Number(profitMargin.toFixed(2)),
       isLossMaking, // FLAGGED
+      createdAt: order.createdAt,
+      confirmedAt: order.confirmedAt,
     };
   });
 
@@ -219,7 +227,33 @@ async function getInvoices(companyId, filters = {}, user = null) {
 async function getInvoicePdfBuffer(companyId, id, user = null) {
   const invoice = await prisma.invoice.findFirst({
     where: { id, companyId, ...customerInvoiceScope(user) },
-    include: { customer: true, lines: true },
+    include: {
+      customer: true,
+      lines: {
+        include: { product: true },
+      },
+      order: {
+        include: {
+          customer: true,
+          serialNumbers: {
+            include: { product: true, warranties: true },
+          },
+          quote: {
+            include: {
+              lines: { include: { product: true } },
+            },
+          },
+        },
+      },
+      ticket: {
+        include: {
+          customer: true,
+          lines: {
+            include: { product: true, serialNumber: { include: { warranties: true } } },
+          },
+        },
+      },
+    },
   });
 
   if (!invoice) {

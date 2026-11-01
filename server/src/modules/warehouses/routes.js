@@ -17,9 +17,9 @@ router.post("/transfers", requireRole("ADMIN", "WAREHOUSE"), warehousesControlle
 router.post("/transfers/:id/approve", requireRole("ADMIN", "WAREHOUSE"), warehousesController.approveTransferRequest);
 router.post("/transfers/:id/reject", requireRole("ADMIN", "WAREHOUSE"), warehousesController.rejectTransferRequest);
 
-// Warehouses list & detail (accessible to ADMIN, WAREHOUSE, SALESMAN, TECHNICIAN)
-router.get("/", requireRole("ADMIN", "WAREHOUSE", "SALESMAN", "TECHNICIAN"), warehousesController.listWarehouses);
-router.get("/:id", requireRole("ADMIN", "WAREHOUSE", "SALESMAN", "TECHNICIAN"), warehousesController.getWarehouse);
+// Warehouse inventory and stock counts are managed by warehouse managers and technicians.
+router.get("/", requireRole("ADMIN", "WAREHOUSE", "TECHNICIAN"), warehousesController.listWarehouses);
+router.get("/:id", requireRole("ADMIN", "WAREHOUSE", "TECHNICIAN"), warehousesController.getWarehouse);
 
 // Multi-Zone City creation & variants (Strictly ADMIN only)
 router.post("/batch", requireRole("ADMIN"), warehousesController.createMultiZoneWarehouses);
@@ -33,8 +33,8 @@ router.patch("/:id", requireRole("ADMIN"), warehousesController.updateWarehouse)
 router.delete("/:id", requireRole("ADMIN"), warehousesController.deleteWarehouse);
 
 // Stock in warehouse (view, add, adjust)
-router.get("/:id/stock", requireRole("ADMIN", "WAREHOUSE", "SALESMAN", "TECHNICIAN"), warehousesController.getWarehouseStock);
-router.post("/:id/stock", requireRole("ADMIN", "WAREHOUSE"), warehousesController.addOrAdjustStock);
+router.get("/:id/stock", requireRole("ADMIN", "WAREHOUSE", "TECHNICIAN"), warehousesController.getWarehouseStock);
+router.post("/:id/stock", requireRole("ADMIN", "WAREHOUSE", "TECHNICIAN"), warehousesController.addOrAdjustStock);
 
 // Check stock in warehouse for a specific pick list
 router.get("/:id/check-pick/:pickListId", requireRole("ADMIN", "WAREHOUSE"), warehousesController.checkPickStock);

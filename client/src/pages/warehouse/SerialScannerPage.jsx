@@ -32,6 +32,13 @@ import {
   Eye,
   Plus,
   X,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Truck,
+  Wrench,
+  Clock,
+  User,
+  MapPin,
 } from 'lucide-react';
 
 export default function SerialScannerPage() {
@@ -82,6 +89,13 @@ export default function SerialScannerPage() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [registerMessage, setRegisterMessage] = useState('');
 
+  // Warehouse Stock Inward / Outward States
+  const [warehouses, setWarehouses] = useState([]);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
+  const [stockOpQty, setStockOpQty] = useState(1);
+  const [stockOpLoading, setStockOpLoading] = useState(false);
+  const [stockOpMessage, setStockOpMessage] = useState(null);
+
   const svgBarcodeRef = useRef(null);
   const canvasQrRef = useRef(null);
 
@@ -100,6 +114,17 @@ export default function SerialScannerPage() {
 
   useEffect(() => {
     loadItemsCatalogue();
+
+    warehousesApi
+      .list()
+      .then((res) => {
+        const whs = res.data?.data || [];
+        setWarehouses(whs);
+        if (whs.length > 0 && !selectedWarehouseId) {
+          setSelectedWarehouseId(whs[0].id);
+        }
+      })
+      .catch((err) => console.error('Failed to load warehouses for scanner operations:', err));
 
     inventoryApi
       .getProducts()
@@ -326,6 +351,54 @@ export default function SerialScannerPage() {
       alert('Failed to generate serials: ' + (err.response?.data?.message || err.message));
     } finally {
       setSeedingSerials(false);
+    }
+  };
+
+  // Handle Warehouse Stock Inward (+ Input) & Outward (- Output)
+  const handleStockOperation = async (operation) => {
+    if (!selectedWarehouseId) {
+      alert('Please select a target warehouse.');
+      return;
+    }
+    const targetProdId = lookupResult?.product?.id;
+    if (!targetProdId) {
+      alert('Product could not be identified for stock adjustment.');
+      return;
+    }
+    const qty = Number(stockOpQty);
+    if (!qty || qty <= 0) {
+      alert('Please enter a valid quantity greater than 0.');
+      return;
+    }
+
+    try {
+      setStockOpLoading(true);
+      setStockOpMessage(null);
+      const res = await warehousesApi.addOrAdjustStock(selectedWarehouseId, {
+        productId: targetProdId,
+        quantity: qty,
+        operation, // 'ADD' or 'DEDUCT'
+        serial: lookupResult?.type === 'SERIAL' ? lookupResult.serial : undefined,
+        notes: `ERP Barcode Scanner ${operation === 'ADD' ? 'Inward (+ Input)' : 'Outward (- Output)'}`,
+      });
+
+      setStockOpMessage({
+        type: 'success',
+        text: `Stock ${operation === 'ADD' ? 'INWARD (+ Input)' : 'OUTWARD (- Output)'} of ${qty} unit(s) successful! Current warehouse stock: ${res.data?.data?.newQuantity ?? 'Updated'}.`,
+      });
+
+      // Refresh lookup and catalog
+      if (scannedCode) {
+        await handleExecuteLookup(scannedCode);
+      }
+      await loadItemsCatalogue();
+    } catch (err) {
+      setStockOpMessage({
+        type: 'error',
+        text: err.response?.data?.message || err.message || 'Stock adjustment failed.',
+      });
+    } finally {
+      setStockOpLoading(false);
     }
   };
 
@@ -755,6 +828,39 @@ export default function SerialScannerPage() {
                   </span>
                 </div>
 
+                {/* Equipment Lifecycle Stage Banner */}
+                {lookupResult.lifecycleLabel && (
+                  <div className="p-3 rounded-2xl border bg-white space-y-1 shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wide ${
+                          lookupResult.lifecycleBadgeColor === 'emerald'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : lookupResult.lifecycleBadgeColor === 'blue'
+                            ? 'bg-sky-100 text-sky-800 border border-sky-300'
+                            : lookupResult.lifecycleBadgeColor === 'amber'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : lookupResult.lifecycleBadgeColor === 'purple'
+                            ? 'bg-purple-100 text-purple-800 border border-purple-300'
+                            : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        }`}
+                      >
+                        {lookupResult.lifecycleStage === 'SOLD_ALLOCATED' && <Clock className="w-3.5 h-3.5 text-amber-600" />}
+                        {lookupResult.lifecycleStage === 'IN_TRANSIT' && <Truck className="w-3.5 h-3.5 text-sky-600 animate-pulse" />}
+                        {lookupResult.lifecycleStage === 'DELIVERED' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                        {lookupResult.lifecycleStage === 'INSTALLED' && <Zap className="w-3.5 h-3.5 text-purple-600" />}
+                        {lookupResult.lifecycleStage === 'IN_STOCK' && <Package className="w-3.5 h-3.5 text-emerald-600" />}
+                        {lookupResult.lifecycleLabel}
+                      </span>
+                    </div>
+                    {lookupResult.lifecycleDescription && (
+                      <p className="text-[11px] text-slate-500 leading-relaxed pl-1">
+                        {lookupResult.lifecycleDescription}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Product Detail */}
                 {lookupResult.product && (
                   <div className="p-4 rounded-2xl bg-[#FAF6F9] border border-[#EBDCE7] space-y-2">
@@ -771,25 +877,72 @@ export default function SerialScannerPage() {
                   </div>
                 )}
 
-                {/* If Serial Unit: Linked Customer, Order, Warranty */}
+                {/* If Serial Unit: Linked Customer, Order, Delivery & Installation Status */}
                 {lookupResult.type === 'SERIAL' && (
                   <div className="space-y-3">
                     {lookupResult.order ? (
-                      <div className="p-3.5 rounded-2xl border border-slate-200 bg-white text-xs space-y-1">
+                      <div className="p-3.5 rounded-2xl border border-slate-200 bg-white text-xs space-y-2">
                         <div className="flex items-center justify-between text-slate-400 text-[10px] font-black uppercase">
                           <span>Allocated Sales Order</span>
-                          <span className="text-[#714B67]">{lookupResult.order.orderNumber}</span>
+                          <span className="text-[#714B67] font-bold">{lookupResult.order.orderNumber}</span>
                         </div>
-                        <div className="font-extrabold text-[#241621]">
+                        <div className="font-extrabold text-[#241621] flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-[#714B67]" />
                           Customer: {lookupResult.order.customer?.name} ({lookupResult.order.customer?.city})
                         </div>
                         <div className="text-[11px] text-slate-500">
-                          Capacity: {lookupResult.order.capacityKw} kW • Status: {lookupResult.order.status}
+                          System Size: <strong>{lookupResult.order.capacityKw} kW</strong> • Order Status: <strong>{lookupResult.order.status}</strong>
                         </div>
                       </div>
                     ) : (
                       <div className="p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200 text-xs text-emerald-800">
                         ✓ In-Stock Unit: Available for dispatch in warehouse inventory.
+                      </div>
+                    )}
+
+                    {/* Delivery Van Status */}
+                    {lookupResult.delivery && (
+                      <div className="p-3.5 rounded-2xl border border-sky-200 bg-sky-50/60 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between text-sky-900 font-bold">
+                          <span className="flex items-center gap-1.5">
+                            <Truck className="w-3.5 h-3.5 text-sky-700" /> Delivery Van Logistics:
+                          </span>
+                          <span className="uppercase font-black text-[10px] px-2 py-0.5 rounded-md bg-white border border-sky-300 text-sky-800">
+                            {lookupResult.delivery.status}
+                          </span>
+                        </div>
+                        <div className="text-slate-600 text-[11px]">
+                          Delivery Driver: <strong>{lookupResult.delivery.deliveryAgent?.name || 'Driver En Route'}</strong>{' '}
+                          {lookupResult.delivery.deliveryAgent?.phone ? `(${lookupResult.delivery.deliveryAgent.phone})` : ''}
+                        </div>
+                        {lookupResult.delivery.deliveredTo && (
+                          <div className="text-[11px] text-emerald-700 font-semibold">
+                            Received at Site By: {lookupResult.delivery.deliveredTo}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Technician Installation Status */}
+                    {lookupResult.installationJob && (
+                      <div className="p-3.5 rounded-2xl border border-purple-200 bg-purple-50/60 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between text-purple-900 font-bold">
+                          <span className="flex items-center gap-1.5">
+                            <Wrench className="w-3.5 h-3.5 text-purple-700" /> Technician Installation:
+                          </span>
+                          <span className="uppercase font-black text-[10px] px-2 py-0.5 rounded-md bg-white border border-purple-300 text-purple-800">
+                            {lookupResult.installationJob.status}
+                          </span>
+                        </div>
+                        <div className="text-slate-600 text-[11px]">
+                          Field Technician: <strong>{lookupResult.installationJob.technician?.name || 'Awaiting Admin Assignment'}</strong>{' '}
+                          {lookupResult.installationJob.technician?.phone ? `(${lookupResult.installationJob.technician.phone})` : ''}
+                        </div>
+                        {lookupResult.installationJob.scheduledAt && (
+                          <div className="text-[11px] text-slate-500">
+                            Scheduled Date: {new Date(lookupResult.installationJob.scheduledAt).toLocaleString()}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -801,6 +954,81 @@ export default function SerialScannerPage() {
                         <div className="text-[10px] text-emerald-700">
                           Valid until: {new Date(lookupResult.warranty.endDate).toLocaleDateString()}
                         </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Warehouse Stock Operations: Inward (+ Input) & Outward (- Output) */}
+                {lookupResult.product && (
+                  <div className="p-4 rounded-2xl bg-white border-2 border-[#714B67]/20 shadow-xs space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black uppercase text-[#714B67] flex items-center gap-1.5">
+                        <Building2 className="w-4 h-4 text-[#f09e38]" /> Warehouse Stock Operations (Barcode Driven)
+                      </h4>
+                      <span className="text-[10px] font-bold text-slate-400">Inward / Outward</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Target Warehouse</label>
+                        <select
+                          value={selectedWarehouseId}
+                          onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                          className="ui-input w-full text-xs font-bold"
+                        >
+                          <option value="">-- Choose Warehouse --</option>
+                          {warehouses.map((wh) => (
+                            <option key={wh.id} value={wh.id}>
+                              {wh.name} ({wh.city} - {wh.zone})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Quantity</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={stockOpQty}
+                          onChange={(e) => setStockOpQty(e.target.value)}
+                          className="ui-input w-full text-xs font-bold"
+                          placeholder="1"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={stockOpLoading || !selectedWarehouseId}
+                        onClick={() => handleStockOperation('ADD')}
+                        className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-extrabold text-xs shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition-all active:scale-[0.98]"
+                      >
+                        <ArrowDownToLine className="w-4 h-4 text-emerald-200" />
+                        📥 Inward Stock (+ Input to WH)
+                      </button>
+                      <button
+                        type="button"
+                        disabled={stockOpLoading || !selectedWarehouseId}
+                        onClick={() => handleStockOperation('DEDUCT')}
+                        className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-amber-700 hover:from-rose-700 hover:to-amber-800 text-white font-extrabold text-xs shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition-all active:scale-[0.98]"
+                      >
+                        <ArrowUpFromLine className="w-4 h-4 text-amber-200" />
+                        📤 Outward Stock (- Output from WH)
+                      </button>
+                    </div>
+
+                    {stockOpMessage && (
+                      <div
+                        className={`p-2.5 rounded-xl text-xs font-semibold ${
+                          stockOpMessage.type === 'success'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-rose-50 text-rose-800 border border-rose-200'
+                        }`}
+                      >
+                        {stockOpMessage.text}
                       </div>
                     )}
                   </div>

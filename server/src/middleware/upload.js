@@ -18,37 +18,50 @@ const upload = multer({
   },
 });
 
-async function uploadToCloudinary(buffer, folder = "solar_management", filename = null) {
+async function uploadToCloudinary(input, folder = "solar_management", filename = null) {
   if (env.cloudinaryConfigured) {
     try {
-      const uploadResult = await new Promise((resolve, reject) => {
-        const uploadOptions = {
-          folder,
-          resource_type: "auto",
-        };
-        if (filename) {
-          uploadOptions.public_id = filename;
-        }
+      const uploadOptions = {
+        folder,
+        resource_type: "auto",
+      };
+      if (filename) {
+        uploadOptions.public_id = filename;
+      }
 
-        const stream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
-          if (error) return reject(error);
-          resolve({
-            url: result.secure_url,
-            publicId: result.public_id,
+      if (Buffer.isBuffer(input)) {
+        const uploadResult = await new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
+            if (error) return reject(error);
+            resolve({
+              url: result.secure_url,
+              publicId: result.public_id,
+            });
           });
+          stream.end(input);
         });
-
-        stream.end(buffer);
-      });
-      return uploadResult;
+        return uploadResult;
+      } else if (typeof input === "string") {
+        const result = await cloudinary.uploader.upload(input, uploadOptions);
+        return {
+          url: result.secure_url,
+          publicId: result.public_id,
+        };
+      }
     } catch (err) {
       console.warn("Cloudinary upload failed, using graceful local base64 fallback:", err.message);
     }
   }
 
   // Graceful local fallback for demo / hackathon / offline environments
-  const base64Data = buffer.toString("base64");
-  const dataUrl = `data:image/jpeg;base64,${base64Data}`;
+  const base64Data = Buffer.isBuffer(input)
+    ? input.toString("base64")
+    : typeof input === "string"
+      ? input
+      : String(input);
+  const dataUrl = typeof base64Data === "string" && base64Data.startsWith("data:")
+    ? base64Data
+    : `data:image/jpeg;base64,${base64Data}`;
   return {
     url: dataUrl,
     publicId: filename || `local_${Date.now()}`,

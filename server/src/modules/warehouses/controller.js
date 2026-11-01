@@ -2,7 +2,7 @@ const warehousesService = require("./service");
 
 async function listWarehouses(req, res, next) {
   try {
-    const warehouses = await warehousesService.getWarehouses(req.companyId, req.query);
+    const warehouses = await warehousesService.getWarehouses(req.companyId, req.query, req.user);
     return res.status(200).json({
       success: true,
       data: warehouses,
@@ -14,7 +14,7 @@ async function listWarehouses(req, res, next) {
 
 async function getWarehouse(req, res, next) {
   try {
-    const warehouse = await warehousesService.getWarehouseById(req.companyId, req.params.id);
+    const warehouse = await warehousesService.getWarehouseById(req.companyId, req.params.id, req.user);
     return res.status(200).json({
       success: true,
       data: warehouse,
@@ -114,7 +114,8 @@ async function getWarehouseStock(req, res, next) {
     const stock = await warehousesService.getWarehouseStock(
       req.companyId,
       req.params.id,
-      req.query.search
+      req.query.search,
+      req.user
     );
     return res.status(200).json({
       success: true,
@@ -132,7 +133,8 @@ async function addOrAdjustStock(req, res, next) {
       req.params.id,
       req.body,
       req.user.id,
-      req
+      req,
+      req.user
     );
     return res.status(200).json({
       success: true,
@@ -149,7 +151,8 @@ async function checkPickStock(req, res, next) {
     const check = await warehousesService.checkWarehouseStockForPickList(
       req.companyId,
       req.params.id,
-      req.params.pickListId
+      req.params.pickListId,
+      req.user
     );
     return res.status(200).json({
       success: true,
@@ -170,7 +173,8 @@ async function createTransferRequest(req, res, next) {
       req.companyId,
       req.body,
       req.user.id,
-      req
+      req,
+      req.user
     );
     return res.status(201).json({
       success: true,
@@ -184,7 +188,7 @@ async function createTransferRequest(req, res, next) {
 
 async function listTransferRequests(req, res, next) {
   try {
-    const transfers = await warehousesService.listTransferRequests(req.companyId, req.query);
+    const transfers = await warehousesService.listTransferRequests(req.companyId, req.query, req.user);
     return res.status(200).json({
       success: true,
       data: transfers,
@@ -200,7 +204,8 @@ async function approveTransferRequest(req, res, next) {
       req.companyId,
       req.params.id,
       req.user.id,
-      req
+      req,
+      req.user
     );
     return res.status(200).json({
       success: true,
@@ -219,7 +224,8 @@ async function rejectTransferRequest(req, res, next) {
       req.params.id,
       req.body.reason,
       req.user.id,
-      req
+      req,
+      req.user
     );
     return res.status(200).json({
       success: true,

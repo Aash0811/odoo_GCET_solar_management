@@ -31,6 +31,7 @@ import {
   FileSpreadsheet,
   AlertTriangle,
   Search,
+  Boxes,
 } from 'lucide-react';
 
 const ROOF_TYPES = [
@@ -265,7 +266,10 @@ export default function SurveysPage() {
       await surveysApi.review(reviewModalSurvey.id, reviewForm);
       setReviewModalSurvey(null);
       if (reviewForm.status === 'APPROVED') {
-        showToast('Survey Approved ✓', 'Lead is now SURVEY_APPROVED. Quote creation is unlocked!');
+        showToast('Survey Approved ✓', 'Lead is now SURVEY_APPROVED. Redirecting to Dispatch & Warehouse field...');
+        setTimeout(() => {
+          navigate('/warehouse/dispatch');
+        }, 900);
       } else if (reviewForm.status === 'RE_SURVEY') {
         showToast('Re-Survey Requested', 'Technician notified to revisit and verify site metrics.', 'warning');
       } else {
@@ -282,8 +286,24 @@ export default function SurveysPage() {
   // ─────────────────────────────────────────────────────────────
   const handleSaveSchedule = async (e) => {
     e.preventDefault();
+    const surveyedById = typeof scheduleForm.surveyedById === 'string'
+      ? scheduleForm.surveyedById.trim()
+      : '';
+    const scheduledAt = typeof scheduleForm.scheduledAt === 'string'
+      ? scheduleForm.scheduledAt.trim()
+      : '';
+
+    if (!scheduledAt) {
+      alert('Please select an appointment date and time before scheduling this survey.');
+      return;
+    }
+
     try {
-      await surveysApi.schedule(scheduleForm);
+      await surveysApi.schedule({
+        ...scheduleForm,
+        surveyedById: surveyedById || null,
+        scheduledAt,
+      });
       setScheduleModalOpen(false);
       setScheduleForm({
         leadId: '',
@@ -693,14 +713,22 @@ export default function SurveysPage() {
                       </button>
                     )}
 
-                    {/* Sales Action: Quote Builder Shortcut */}
+                    {/* Dispatch Warehouse & Quote Actions */}
                     {isApproved && (
-                      <button
-                        onClick={() => navigate('/sales/quotes')}
-                        className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md shadow-emerald-600/25 transition cursor-pointer flex items-center gap-1.5"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5" /> Proceed to Quote Builder →
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => navigate('/warehouse/dispatch')}
+                          className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-md shadow-emerald-600/25 transition cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Boxes className="w-3.5 h-3.5" /> Dispatch Warehouse Field →
+                        </button>
+                        <button
+                          onClick={() => navigate('/sales/quotes')}
+                          className="px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs transition cursor-pointer flex items-center gap-1"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5" /> Quotes
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1195,9 +1223,16 @@ export default function SurveysPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-[#714B67] hover:bg-[#5C3B53] text-white font-black shadow-md cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black shadow-md cursor-pointer flex items-center gap-1.5"
                 >
-                  Confirm Decision
+                  {reviewForm.status === 'APPROVED' ? (
+                    <>
+                      <Boxes className="w-4 h-4 text-amber-300" />
+                      <span>Confirm Approval &amp; Go to Dispatch Warehouse →</span>
+                    </>
+                  ) : (
+                    'Confirm Decision'
+                  )}
                 </button>
               </div>
             </form>
@@ -1249,18 +1284,17 @@ export default function SurveysPage() {
 
               <div>
                 <label className="font-extrabold text-[#241621] mb-1 flex items-center justify-between">
-                  <span>Assign Technician (Admin Discretion) *</span>
+                  <span>Assign Technician (Admin Discretion)</span>
                   <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                    Admin Assignment Required
+                    Optional / Discretionary
                   </span>
                 </label>
                 <select
-                  required
-                  value={scheduleForm.surveyedById}
+                  value={scheduleForm.surveyedById || ''}
                   onChange={(e) => setScheduleForm({ ...scheduleForm, surveyedById: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] bg-white font-bold text-xs"
+                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] bg-white font-bold text-xs cursor-pointer"
                 >
-                  <option value="">— Select Technician to Assign —</option>
+                  <option value="">— Assign Later by Admin —</option>
                   {technicians.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name} ({t.activeSurveys || 0} active surveys) • {t.phone || t.email || 'Technician'}
@@ -1270,6 +1304,11 @@ export default function SurveysPage() {
                 <p className="text-[10px] text-slate-500 mt-1">
                   Auto-assignment strategy has been removed. The Admin must select a qualified technician.
                 </p>
+                {technicians.length === 0 && (
+                  <p className="text-[10px] text-rose-700 font-semibold mt-1">
+                    No active technician is available. Create or activate a technician user before scheduling.
+                  </p>
+                )}
               </div>
 
               <div>

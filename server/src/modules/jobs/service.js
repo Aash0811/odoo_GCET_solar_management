@@ -27,7 +27,19 @@ async function getJobs(companyId, filters = {}, user = null) {
     where,
     include: {
       customer: { select: { id: true, name: true, phone: true, address: true } },
-      order: { select: { id: true, orderNumber: true, status: true, capacityKw: true } },
+      order: {
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          capacityKw: true,
+          deliveries: {
+            select: { id: true, status: true, deliveredAt: true, deliveredTo: true },
+            take: 1,
+            orderBy: { createdAt: "desc" },
+          },
+        },
+      },
       technician: { select: { id: true, name: true, phone: true } },
       photos: true,
       signature: true,
@@ -57,7 +69,7 @@ async function getJobById(companyId, id, user = null) {
       customer: true,
       order: {
         include: {
-          serialNumbers: { include: { product: true } },
+          serialNumbers: { include: { product: true, warranties: true } },
           quote: {
             include: {
               lines: {
@@ -339,7 +351,7 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null,
     if (newPhotos.length > 0) {
       for (let i = 0; i < newPhotos.length; i++) {
         const pFile = newPhotos[i];
-        const uploaded = await uploadToCloudinary(pFile.buffer, "installations", `job_${id}_${Date.now()}_${i}`);
+        const uploaded = await uploadToCloudinary(pFile.buffer, "solar_management/installations", `job_${id}_photo_${Date.now()}_${i}`);
         const caption = (Array.isArray(photoCaptions) && photoCaptions[i])
           ? photoCaptions[i]
           : `Post-installation site photo ${existingPhotoCount + i + 1}`;
@@ -358,7 +370,21 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null,
     if (bodyPhotos.length > 0) {
       for (let i = 0; i < bodyPhotos.length; i++) {
         const item = bodyPhotos[i];
-        const url = typeof item === "string" ? item : item.url;
+        let rawUrl = typeof item === "string" ? item : item.url;
+        let finalUrl = rawUrl;
+        let publicId = typeof item === "object" ? item.publicId : null;
+
+        // Automatically upload base64 or remote photos into user's Cloudinary storage
+        if (rawUrl && (rawUrl.startsWith("data:") || rawUrl.startsWith("http"))) {
+          try {
+            const uploaded = await uploadToCloudinary(rawUrl, "solar_management/installations", `job_${id}_photo_${Date.now()}_${i}`);
+            finalUrl = uploaded.url;
+            publicId = uploaded.publicId;
+          } catch (e) {
+            console.warn("Could not upload bodyPhoto to Cloudinary, keeping original:", e.message);
+          }
+        }
+
         const caption = typeof item === "object" && item.caption
           ? item.caption
           : (Array.isArray(photoCaptions) && photoCaptions[i])
@@ -367,7 +393,8 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null,
         await tx.jobPhoto.create({
           data: {
             installationJobId: id,
-            url,
+            url: finalUrl,
+            publicId,
             caption,
           },
         });
@@ -379,14 +406,13 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null,
     let sigPublicId = job.signature ? job.signature.publicId : null;
 
     if (signatureFile) {
-      const uploadedSig = await uploadToCloudinary(signatureFile.buffer, "signatures", `sig_${id}_${Date.now()}`);
+      const uploadedSig = await uploadToCloudinary(signatureFile.buffer, "solar_management/signatures", `sig_${id}_${Date.now()}`);
       sigUrl = uploadedSig.url;
       sigPublicId = uploadedSig.publicId;
     } else if (signatureBase64) {
-      sigUrl = signatureBase64.startsWith("data:")
-        ? signatureBase64
-        : `data:image/png;base64,${signatureBase64}`;
-      sigPublicId = `sig_${id}_${Date.now()}`;
+      const uploadedSig = await uploadToCloudinary(signatureBase64, "solar_management/signatures", `sig_${id}_${Date.now()}`);
+      sigUrl = uploadedSig.url;
+      sigPublicId = uploadedSig.publicId;
     }
 
     const signedByName = data.signedByName || job.customer?.name || "Customer Acceptance";
@@ -469,7 +495,7 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null,
       },
     });
 
-    // E. Mark serials as installed. Warranties start at delivery validation.
+    // E. Mark serials as installed and start warranty time clock on installation completion date
     const installCompletionDate = completedJob.completedAt || new Date();
     await tx.serialNumber.updateMany({
       where: { orderId: job.orderId },
@@ -478,6 +504,35 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null,
         installedAt: installCompletionDate,
       },
     });
+
+    // Start warranty clock upon successful installation completion & customer digital signature acceptance
+    const orderSerials = await tx.serialNumber.findMany({
+      where: { orderId: job.orderId },
+      include: { product: true },
+    });
+
+    for (const sn of orderSerials) {
+      const warrantyYears = sn.product?.warrantyYears || 5;
+      const startDate = installCompletionDate;
+      const endDate = new Date(startDate.getTime() + warrantyYears * 365 * 86400000);
+
+      await tx.warranty.upsert({
+        where: { serialNumberId: sn.id },
+        update: {
+          startDate,
+          endDate,
+          status: "ACTIVE",
+        },
+        create: {
+          companyId,
+          customerId: job.customerId,
+          serialNumberId: sn.id,
+          status: "ACTIVE",
+          startDate,
+          endDate,
+        },
+      });
+    }
 
     // F. Open subsidy paperwork after signed installation acceptance.
     const subsidyAmount = Number(job.order?.quote?.subsidyAmount || 0);

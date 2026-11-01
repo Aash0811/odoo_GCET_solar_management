@@ -22,6 +22,7 @@ const updateDeliveryStatusSchema = z.object({
   status: z.enum(["ASSIGNED", "IN_TRANSIT", "ARRIVED"]),
   latitude: z.coerce.number().min(-90).max(90).optional().nullable(),
   longitude: z.coerce.number().min(-180).max(180).optional().nullable(),
+  loadedVanSerials: z.array(z.string().min(1)).optional().default([]),
 });
 
 module.exports = {

@@ -20,6 +20,7 @@ import SerialScannerPage from '../pages/warehouse/SerialScannerPage';
 import TechnicianJobsPage from '../pages/technician/TechnicianJobsPage';
 import MobileInstallFormPage from '../pages/technician/MobileInstallFormPage';
 import ServiceDeskPage from '../pages/support/ServiceDeskPage';
+import WarrantyLookupPage from '../pages/support/WarrantyLookupPage';
 import FinancePage from '../pages/finance/FinancePage';
 import CustomerPortalPage from '../pages/customer/CustomerPortalPage';
 import CustomerDashboardPage from '../pages/customer/CustomerDashboardPage';
@@ -103,9 +104,13 @@ export default function AppRoutes() {
           </Route>
 
           {/* Warehouse routes */}
-          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'WAREHOUSE']} />}>
+          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'WAREHOUSE', 'TECHNICIAN']} />}>
             <Route path="/warehouse/dispatch" element={<PickListDispatchPage />} />
             <Route path="/warehouse/inventory" element={<InventoryPage />} />
+          </Route>
+
+          {/* Barcode & QR Scanner (Admin, Warehouse, Technician) */}
+          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'WAREHOUSE', 'TECHNICIAN']} />}>
             <Route path="/warehouse/scanner" element={<SerialScannerPage />} />
           </Route>
 
@@ -119,13 +124,10 @@ export default function AppRoutes() {
             <Route path="/technician/jobs/:id" element={<MobileInstallFormPage />} />
           </Route>
 
-          {/* Support & Service routes */}
-          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SUPPORT']} />}>
-            <Route path="/support/tickets" element={<ServiceDeskPage />} />
-          </Route>
-
+          {/* Support & Service Desk + Warranty Engine routes */}
           <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SUPPORT', 'SALESMAN']} />}>
-            <Route path="/warranty/lookup" element={<ServiceDeskPage />} />
+            <Route path="/support/tickets" element={<ServiceDeskPage />} />
+            <Route path="/warranty/lookup" element={<WarrantyLookupPage />} />
             <Route path="/finance/subsidies" element={<FinancePage defaultTab="subsidies" />} />
           </Route>
 

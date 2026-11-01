@@ -22,9 +22,7 @@ import {
   Bell,
   Shield,
   Compass,
-  Play,
   CheckCircle2,
-  ArrowRight,
   Sliders,
   Globe,
   Building2,
@@ -33,71 +31,11 @@ import {
   QrCode,
 } from 'lucide-react';
 
-const TOUR_STEPS = [
-  {
-    step: 1,
-    title: 'Lead Pipeline & Qualification',
-    role: 'SALESMAN',
-    path: '/sales/leads',
-    rule: 'Rule 1: Never Hard Deleted & 3 Gate Checkpoints',
-    desc: 'Sales pipeline with 9 stages. Leads are soft-archived, qualified on 3 gates (roof, bill, grid) before site survey booking.',
-  },
-  {
-    step: 2,
-    title: 'Solar Quotation Studio & PV Simulation',
-    role: 'SALESMAN',
-    path: '/sales/quotes',
-    rule: 'Rule 2 & 3: Survey Gate & Auto-Expanded BOM',
-    desc: 'Interactive kW capacity slider with real-time Photovoltaic Solar Array Simulator, PM Surya Ghar subsidy deduction chip, and PDFKit export.',
-  },
-  {
-    step: 3,
-    title: 'Order Conversion & Milestone Advance',
-    role: 'SALESMAN',
-    path: '/sales/orders',
-    rule: 'Rule 4: Atomic Transaction Trigger',
-    desc: 'Recording a deposit atomically confirms the order, creates the warehouse material Pick List, and spawns the Installation Job.',
-  },
-  {
-    step: 4,
-    title: 'Warehouse Serial Scanner & Delivery',
-    role: 'WAREHOUSE',
-    path: '/warehouse/dispatch',
-    rule: 'Rule 5 & 6: 100% Serial Gate & Auto-Warranties',
-    desc: 'High-speed barcode/QR scanner station with radar laser. Validating delivery auto-generates active hardware warranties.',
-  },
-  {
-    step: 5,
-    title: 'Mobile Technician Execution & Handover',
-    role: 'TECHNICIAN',
-    path: '/technician/jobs',
-    rule: 'Rule 7: 5 Safety Checks + Photos + Signatures',
-    desc: 'Touch-optimized mobile workflow. Completing an install requires all 5 checklist verifications, photo upload, and customer signature.',
-  },
-  {
-    step: 6,
-    title: 'Warranty Engine & Defect Unit Swap',
-    role: 'SUPPORT',
-    path: '/support/tickets',
-    rule: 'Rule 8: Free In-Warranty vs Auto-Invoice',
-    desc: 'Instant warranty search with days remaining. Defective unit replacement voids the old serial and starts a brand new warranty.',
-  },
-  {
-    step: 7,
-    title: 'Executive Dashboard & Job Costing',
-    role: 'ADMIN',
-    path: '/admin/dashboard',
-    rule: 'Rule 9, 10, 11: Loss Alerts & Public Share Link',
-    desc: 'Real-time financial telemetry with red alerts for loss-making jobs (e.g. SO-2026-LOSS), technician payouts, and 7-day public share links.',
-  },
-];
-
 export default function DashboardLayout() {
   const { user, role, logout, quickSwitchRole } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [tourModalOpen, setTourModalOpen] = useState(false);
 
   const navItems = [
     { label: 'Executive Dashboard (P&L)', path: '/admin/dashboard', icon: LayoutDashboard, roles: ['ADMIN', 'ACCOUNTANT'] },
@@ -107,13 +45,12 @@ export default function DashboardLayout() {
     { label: 'Site Surveys', path: '/operations/surveys', icon: Compass, roles: ['ADMIN', 'TECHNICIAN'] },
     { label: 'Quote Builder', path: '/sales/quotes', icon: FileSpreadsheet, roles: ['ADMIN', 'SALESMAN'] },
     { label: 'Orders & Payments', path: '/sales/orders', icon: Receipt, roles: ['ADMIN', 'SALESMAN', 'ACCOUNTANT'] },
-    { label: 'Warehouse & Dispatch', path: '/warehouse/dispatch', icon: Boxes, roles: ['ADMIN', 'WAREHOUSE'] },
+    { label: 'Warehouse & Dispatch', path: '/warehouse/dispatch', icon: Boxes, roles: ['ADMIN', 'WAREHOUSE', 'TECHNICIAN'] },
     { label: 'Assigned Deliveries', path: '/delivery/assigned', icon: Truck, roles: ['ADMIN', 'DELIVERY_AGENT'] },
     { label: 'Multi-Zone Stock', path: '/warehouse/inventory', icon: Building2, roles: ['ADMIN', 'WAREHOUSE'] },
     { label: 'Barcode & QR Scanner', path: '/warehouse/scanner', icon: QrCode, roles: ['ADMIN', 'WAREHOUSE', 'TECHNICIAN'] },
     { label: 'Installation Jobs', path: '/technician/jobs', icon: Wrench, roles: ['ADMIN', 'TECHNICIAN'] },
-    { label: 'Service Desk & Tickets', path: '/support/tickets', icon: HeadphonesIcon, roles: ['ADMIN', 'SUPPORT'] },
-    { label: 'Warranty Lookup', path: '/warranty/lookup', icon: ShieldCheck, roles: ['ADMIN', 'SUPPORT', 'SALESMAN'] },
+    { label: 'Solar Service Desk & Warranty', path: '/support/tickets', icon: HeadphonesIcon, roles: ['ADMIN', 'SUPPORT', 'SALESMAN'] },
     { label: 'Job Costing & Finance', path: '/finance/costing', icon: Coins, roles: ['ADMIN', 'ACCOUNTANT'] },
     { label: 'Subsidy Tracker', path: '/finance/subsidies', icon: BadgePercent, roles: ['ADMIN', 'SALESMAN', 'SUPPORT'] },
     { label: 'Customer Portal', path: '/customer-portal', icon: UserCheck, roles: ['CUSTOMER'] },
@@ -137,14 +74,6 @@ export default function DashboardLayout() {
     else if (newRole === 'ACCOUNTANT') navigate('/admin/dashboard');
     else if (newRole === 'SALESMAN') navigate('/sales/leads');
     else navigate('/admin/dashboard');
-  };
-
-  const handleJumpToTourStep = async (step) => {
-    if (role !== step.role) {
-      await quickSwitchRole(step.role);
-    }
-    setTourModalOpen(false);
-    navigate(step.path);
   };
 
   const currentNavItem = navItems.find((item) => location.pathname.startsWith(item.path));
@@ -200,17 +129,6 @@ export default function DashboardLayout() {
             <option value="SUPPORT">SUPPORT (Warranty Desk)</option>
             <option value="CUSTOMER">CUSTOMER (Client Portal)</option>
           </select>
-        </div>
-
-        {/* Guided Hackathon Tour Button in Sidebar */}
-        <div className="p-3">
-          <button
-            onClick={() => setTourModalOpen(true)}
-            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-[#f09e38] to-[#d4821a] text-[#241621] text-xs font-black flex items-center justify-center gap-2 shadow-md shadow-[#f09e38]/20 hover:opacity-95 transition cursor-pointer"
-          >
-            <Compass className="w-4 h-4 text-[#241621]" />
-            Judge Guided Tour
-          </button>
         </div>
 
         {/* Navigation Links */}
@@ -308,16 +226,6 @@ export default function DashboardLayout() {
 
           {/* Right Header Badges */}
           <div className="flex items-center gap-2.5">
-            {/* Quick Guided Tour Button in Top Header */}
-            <button
-              onClick={() => setTourModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#714B67] to-[#855278] hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#714B67]/20 text-white text-xs font-black shadow-sm cursor-pointer transition"
-            >
-              <Compass className="w-3.5 h-3.5 text-[#f09e38]" />
-              <span className="hidden sm:inline">Judge Walkthrough Tour</span>
-              <span className="sm:hidden">Tour</span>
-            </button>
-
             <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#F5EDF3] border border-[#EBDCE7] text-[11px] font-bold text-[#714B67]">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               PostgreSQL Connected • Scoped
@@ -334,71 +242,6 @@ export default function DashboardLayout() {
           <Outlet />
         </main>
       </div>
-
-      {/* Guided Hackathon Tour Modal */}
-      {tourModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#22151F]/75 backdrop-blur-md p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-[#EBDCE7] space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-[#EBDCE7]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-[#F5EDF3] flex items-center justify-center text-[#714B67]">
-                  <Compass className="w-5 h-5 text-[#f09e38]" />
-                </div>
-                <div>
-                  <h2 className="text-base font-black text-[#241621]">Judge Hackathon Guided Tour</h2>
-                  <p className="text-[11px] text-[#714B67] font-semibold">
-                    Explore the complete 7-step rooftop solar lifecycle with 1-click persona switching
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => setTourModalOpen(false)} className="text-[#b886ad] hover:text-[#241621] cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {TOUR_STEPS.map((s) => (
-                <div
-                  key={s.step}
-                  className="p-3.5 rounded-2xl border border-[#EBDCE7] bg-[#FAF6F9] hover:bg-[#F5EDF3] transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-[#714B67] text-white text-[10px] font-black flex items-center justify-center font-mono">
-                        {s.step}
-                      </span>
-                      <h3 className="text-xs font-black text-[#241621]">{s.title}</h3>
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-white text-[#714B67] border border-[#EBDCE7]">
-                        {s.role}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[#f09e38] font-bold">{s.rule}</p>
-                    <p className="text-xs text-slate-600 font-medium">{s.desc}</p>
-                  </div>
-
-                  <button
-                    onClick={() => handleJumpToTourStep(s)}
-                    className="shrink-0 px-3.5 py-1.5 rounded-xl bg-[#714B67] hover:bg-[#5C3B53] text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition cursor-pointer self-start sm:self-auto"
-                  >
-                    <span>Jump to Step</span>
-                    <ArrowRight className="w-3.5 h-3.5 text-[#f09e38]" />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-2 border-t border-[#EBDCE7] flex items-center justify-between text-xs">
-              <span className="text-[#b886ad] font-semibold">Tip: All 11 rules are enforced server-side.</span>
-              <button
-                onClick={() => setTourModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold cursor-pointer"
-              >
-                Close Tour
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Mobile Drawer Menu */}
       {mobileMenuOpen && (
@@ -438,23 +281,13 @@ export default function DashboardLayout() {
             </select>
           </div>
 
-          <button
-            onClick={() => {
-              setMobileMenuOpen(false);
-              setTourModalOpen(true);
-            }}
-            className="mb-4 w-full py-2.5 rounded-xl bg-gradient-to-r from-[#f09e38] to-[#d4821a] text-[#241621] text-xs font-black flex items-center justify-center gap-2"
-          >
-            <Compass className="w-4 h-4" /> Judge Guided Tour
-          </button>
-
           <div className="space-y-1.5 flex-1 overflow-y-auto">
             {visibleNav.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 p-3 rounded-xl text-sm font-semibold text-slatechec=======200 bg-[#2B1B27]/70 hover:bg-[#714b67]"
+                className="flex items-center gap-3 p-3 rounded-xl text-sm font-semibold text-slate-200 bg-[#2B1B27]/70 hover:bg-[#714b67]"
               >
                 <item.icon className="w-5 h-5 text-[#f09e38]" />
                 <span>{item.label}</span>

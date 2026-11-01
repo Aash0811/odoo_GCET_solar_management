@@ -147,7 +147,8 @@ async function assignDeliveryAgent(req, res, next) {
 
 async function lookupBarcode(req, res, next) {
   try {
-    const result = await dispatchService.lookupBarcode(req.companyId, req.query.code);
+    const code = req.query.code || req.params.code;
+    const result = await dispatchService.lookupBarcode(req.companyId, code);
     return res.status(200).json({
       success: true,
       data: result,

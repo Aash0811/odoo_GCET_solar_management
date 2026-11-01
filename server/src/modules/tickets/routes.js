@@ -15,12 +15,12 @@ const {
 router.use(authenticate);
 router.use(companyScope);
 
-router.get("/", requireRole("ADMIN", "SUPPORT", "TECHNICIAN", "CUSTOMER"), ticketsController.listTickets);
-router.get("/:id", requireRole("ADMIN", "SUPPORT", "TECHNICIAN", "CUSTOMER"), ticketsController.getTicket);
+router.get("/", requireRole("ADMIN", "SUPPORT", "SALESMAN", "TECHNICIAN", "CUSTOMER"), ticketsController.listTickets);
+router.get("/:id", requireRole("ADMIN", "SUPPORT", "SALESMAN", "TECHNICIAN", "CUSTOMER"), ticketsController.getTicket);
 
-router.post("/", requireRole("ADMIN", "SUPPORT", "CUSTOMER"), validate(createTicketSchema), ticketsController.createTicket);
-router.post("/:id/lines", requireRole("ADMIN", "SUPPORT", "TECHNICIAN"), validate(addTicketLineSchema), ticketsController.addTicketLine);
+router.post("/", requireRole("ADMIN", "SUPPORT", "SALESMAN", "CUSTOMER"), validate(createTicketSchema), ticketsController.createTicket);
+router.post("/:id/lines", requireRole("ADMIN", "SUPPORT", "SALESMAN", "TECHNICIAN"), validate(addTicketLineSchema), ticketsController.addTicketLine);
 router.post("/:id/resolve", requireRole("ADMIN", "SUPPORT", "TECHNICIAN"), validate(resolveTicketSchema), ticketsController.resolveTicket);
-router.patch("/:id/status", requireRole("ADMIN", "SUPPORT", "CUSTOMER"), validate(updateTicketStatusSchema), ticketsController.updateTicketStatus);
+router.patch("/:id/status", requireRole("ADMIN", "SUPPORT", "SALESMAN", "CUSTOMER"), validate(updateTicketStatusSchema), ticketsController.updateTicketStatus);
 
 module.exports = router;

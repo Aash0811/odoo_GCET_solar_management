@@ -1,6 +1,6 @@
 const prisma = require("../../config/prisma");
 const { recordAuditLog } = require("../../utils/audit");
-const { createNotification } = require("../../utils/notify");
+const { createNotification, notifyRole } = require("../../utils/notify");
 const { uploadToCloudinary } = require("../../middleware/upload");
 
 function parseSurveyNotes(notes) {
@@ -231,26 +231,27 @@ async function scheduleSurvey(companyId, data, actorId, req = null) {
   }
 
   return await prisma.$transaction(async (tx) => {
-    const assignedTechnicianId = data.surveyedById;
-    if (!assignedTechnicianId) {
-      const error = new Error("Technician assignment is required. The Admin must select a qualified technician to assign this site survey.");
-      error.statusCode = 400;
-      throw error;
-    }
+    const assignedTechnicianId =
+      data.surveyedById && typeof data.surveyedById === "string" && data.surveyedById.trim()
+        ? data.surveyedById.trim()
+        : null;
 
-    const selectedTechnician = await tx.user.findFirst({
-      where: {
-        id: assignedTechnicianId,
-        companyId,
-        isActive: true,
-        role: { in: ["TECHNICIAN", "ADMIN"] },
-      },
-      select: { id: true, name: true, phone: true },
-    });
-    if (!selectedTechnician) {
-      const error = new Error("Selected technician is not active or does not belong to this company.");
-      error.statusCode = 400;
-      throw error;
+    let selectedTechnician = null;
+    if (assignedTechnicianId) {
+      selectedTechnician = await tx.user.findFirst({
+        where: {
+          id: assignedTechnicianId,
+          companyId,
+          isActive: true,
+          role: { in: ["TECHNICIAN", "ADMIN"] },
+        },
+        select: { id: true, name: true, phone: true },
+      });
+      if (!selectedTechnician) {
+        const error = new Error("Selected technician is not active or does not belong to this company.");
+        error.statusCode = 400;
+        throw error;
+      }
     }
 
     let survey;
@@ -336,6 +337,21 @@ async function scheduleSurvey(companyId, data, actorId, req = null) {
           message: `Admin assigned you to conduct a site survey for '${lead.contactName}' on ${new Date(
             data.scheduledAt
           ).toLocaleString("en-IN")}.`,
+          entityType: "Survey",
+          entityId: survey.id,
+        },
+        tx
+      );
+    } else {
+      await notifyRole(
+        companyId,
+        "ADMIN",
+        {
+          type: "GENERAL",
+          title: "Site Survey Booked - Needs Technician Assignment",
+          message: `Site survey for '${lead.contactName}' has been scheduled for ${new Date(
+            data.scheduledAt
+          ).toLocaleString("en-IN")}. Please assign a qualified technician.`,
           entityType: "Survey",
           entityId: survey.id,
         },

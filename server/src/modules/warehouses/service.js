@@ -4,9 +4,25 @@ const { recordAuditLog } = require("../../utils/audit");
 /**
  * List all warehouses for the company, with stock summary and assigned zone manager
  */
-async function getWarehouses(companyId, filters = {}) {
+function warehouseAccessFilter(user) {
+  return user?.role === "WAREHOUSE" ? { managerId: user.id } : {};
+}
+
+async function assertManagedWarehouse(companyId, warehouseId, user) {
+  const warehouse = await prisma.warehouse.findFirst({
+    where: { id: warehouseId, companyId, ...warehouseAccessFilter(user) },
+  });
+  if (!warehouse) {
+    const error = new Error("You can only manage stock for your assigned warehouse.");
+    error.statusCode = 403;
+    throw error;
+  }
+  return warehouse;
+}
+
+async function getWarehouses(companyId, filters = {}, user = null) {
   const { city, zone, isActive, search } = filters;
-  const where = { companyId };
+  const where = { companyId, ...warehouseAccessFilter(user) };
 
   if (isActive !== undefined && isActive !== "") {
     where.isActive = isActive === "true" || isActive === true;
@@ -72,9 +88,9 @@ async function getWarehouses(companyId, filters = {}) {
 /**
  * Get warehouse detail by ID with stock inventory and manager
  */
-async function getWarehouseById(companyId, id) {
+async function getWarehouseById(companyId, id, user = null) {
   const warehouse = await prisma.warehouse.findFirst({
-    where: { id, companyId },
+    where: { id, companyId, ...warehouseAccessFilter(user) },
     include: {
       manager: {
         select: {
@@ -639,16 +655,8 @@ async function deleteWarehouse(companyId, id, actorId, req = null) {
 /**
  * Get all stock for a warehouse with optional search
  */
-async function getWarehouseStock(companyId, warehouseId, search = "") {
-  const warehouse = await prisma.warehouse.findFirst({
-    where: { id: warehouseId, companyId },
-  });
-
-  if (!warehouse) {
-    const error = new Error("Warehouse not found.");
-    error.statusCode = 404;
-    throw error;
-  }
+async function getWarehouseStock(companyId, warehouseId, search = "", user = null) {
+  await assertManagedWarehouse(companyId, warehouseId, user);
 
   const whereProduct = { companyId };
   if (search) {
@@ -697,8 +705,8 @@ async function getWarehouseStock(companyId, warehouseId, search = "") {
  * Add or adjust stock present in a warehouse
  * Operation: "ADD" (inward stock) or "SET" (audit count / inventory recount)
  */
-async function addOrAdjustStock(companyId, warehouseId, stockData, actorId, req = null) {
-  const { productId, quantity, operation = "ADD", notes, reference } = stockData;
+async function addOrAdjustStock(companyId, warehouseId, stockData, actorId, req = null, user = null) {
+  const { productId, quantity, operation = "ADD", notes, reference, serial, serialNumber } = stockData;
 
   const numQty = Number(quantity);
   if (isNaN(numQty) || numQty < 0) {
@@ -707,15 +715,7 @@ async function addOrAdjustStock(companyId, warehouseId, stockData, actorId, req 
     throw error;
   }
 
-  const warehouse = await prisma.warehouse.findFirst({
-    where: { id: warehouseId, companyId },
-  });
-
-  if (!warehouse) {
-    const error = new Error("Warehouse not found.");
-    error.statusCode = 404;
-    throw error;
-  }
+  const warehouse = await assertManagedWarehouse(companyId, warehouseId, user);
 
   const product = await prisma.product.findFirst({
     where: { id: productId, companyId },
@@ -726,6 +726,8 @@ async function addOrAdjustStock(companyId, warehouseId, stockData, actorId, req 
     error.statusCode = 404;
     throw error;
   }
+
+  const targetSerial = (serial || serialNumber)?.trim();
 
   return await prisma.$transaction(async (tx) => {
     const existing = await tx.warehouseStock.findUnique({
@@ -744,8 +746,18 @@ async function addOrAdjustStock(companyId, warehouseId, stockData, actorId, req 
     if (operation === "SET") {
       newQty = numQty;
       delta = newQty - oldQty;
+    } else if (operation === "DEDUCT" || operation === "SUBTRACT" || operation === "OUTWARD") {
+      if (oldQty < numQty) {
+        const error = new Error(
+          `Cannot deduct ${numQty} units: Warehouse '${warehouse.name}' only has ${oldQty} units available.`
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+      newQty = oldQty - numQty;
+      delta = -numQty;
     } else {
-      // ADD
+      // ADD / INWARD
       newQty = oldQty + numQty;
       delta = numQty;
     }
@@ -767,6 +779,43 @@ async function addOrAdjustStock(companyId, warehouseId, stockData, actorId, req 
         minQuantity: 5,
       },
     });
+
+    // If a serial is specified for this unit, synchronize SerialNumber record
+    if (delta > 0 && targetSerial) {
+      const existingSn = await tx.serialNumber.findFirst({
+        where: { companyId, serial: targetSerial },
+      });
+      if (existingSn) {
+        await tx.serialNumber.update({
+          where: { id: existingSn.id },
+          data: {
+            productId,
+            status: "IN_STOCK",
+            orderId: null,
+            customerId: null,
+          },
+        });
+      } else {
+        await tx.serialNumber.create({
+          data: {
+            companyId,
+            productId,
+            serial: targetSerial,
+            status: "IN_STOCK",
+          },
+        });
+      }
+    } else if (delta < 0 && targetSerial) {
+      const existingSn = await tx.serialNumber.findFirst({
+        where: { companyId, serial: targetSerial },
+      });
+      if (existingSn && !existingSn.orderId) {
+        await tx.serialNumber.update({
+          where: { id: existingSn.id },
+          data: { status: "RETURNED" },
+        });
+      }
+    }
 
     // Update aggregate product stockQty
     if (delta !== 0) {
@@ -791,7 +840,13 @@ async function addOrAdjustStock(companyId, warehouseId, stockData, actorId, req 
           type: delta > 0 ? "PURCHASE" : "ADJUSTMENT",
           quantity: Math.abs(delta),
           reference: reference || `WH-STOCK-${warehouse.code}`,
-          notes: notes || `${operation === "SET" ? "Inventory Count Set" : "Stock Inward"} at ${warehouse.name} (${warehouse.city} - ${warehouse.zone})`,
+          notes:
+            notes ||
+            (operation === "SET"
+              ? `Inventory Count Set at ${warehouse.name} (${warehouse.city} - ${warehouse.zone})`
+              : delta > 0
+              ? `Stock Inward (+ Input) at ${warehouse.name} (${warehouse.city} - ${warehouse.zone})${targetSerial ? ` [Serial: ${targetSerial}]` : ""}`
+              : `Stock Outward (- Output) from ${warehouse.name} (${warehouse.city} - ${warehouse.zone})${targetSerial ? ` [Serial: ${targetSerial}]` : ""}`),
         },
       });
     }
@@ -805,7 +860,7 @@ async function addOrAdjustStock(companyId, warehouseId, stockData, actorId, req 
         entityId: updatedStock.id,
         oldValue: { quantity: oldQty },
         newValue: { quantity: newQty, operation, delta },
-        metadata: { warehouseId, productId, warehouseName: warehouse.name, productName: product.name },
+        metadata: { warehouseId, productId, warehouseName: warehouse.name, productName: product.name, serial: targetSerial },
         req,
       },
       tx
@@ -816,6 +871,7 @@ async function addOrAdjustStock(companyId, warehouseId, stockData, actorId, req 
       oldQuantity: oldQty,
       newQuantity: newQty,
       delta,
+      operation,
       productName: product.name,
       warehouseName: warehouse.name,
     };
@@ -826,7 +882,8 @@ async function addOrAdjustStock(companyId, warehouseId, stockData, actorId, req 
  * Check warehouse stock against pick list requirements.
  * RULE: We should not be able to pick the stock that is not present in the warehouse!
  */
-async function checkWarehouseStockForPickList(companyId, warehouseId, pickListId) {
+async function checkWarehouseStockForPickList(companyId, warehouseId, pickListId, user = null) {
+  await assertManagedWarehouse(companyId, warehouseId, user);
   const warehouse = await prisma.warehouse.findFirst({
     where: { id: warehouseId, companyId },
   });
@@ -915,7 +972,7 @@ async function checkWarehouseStockForPickList(companyId, warehouseId, pickListId
 /**
  * Request stock transfer from another warehouse
  */
-async function createTransferRequest(companyId, data, actorId, req = null) {
+async function createTransferRequest(companyId, data, actorId, req = null, user = null) {
   const { fromWarehouseId, toWarehouseId, productId, quantity, notes } = data;
 
   if (!fromWarehouseId || !toWarehouseId || !productId || !quantity) {
@@ -928,6 +985,10 @@ async function createTransferRequest(companyId, data, actorId, req = null) {
     const error = new Error("Source warehouse and Destination warehouse cannot be the same.");
     error.statusCode = 400;
     throw error;
+  }
+
+  if (user?.role === "WAREHOUSE") {
+    await assertManagedWarehouse(companyId, toWarehouseId, user);
   }
 
   const numQty = Number(quantity);
@@ -1042,30 +1103,39 @@ async function createTransferRequest(companyId, data, actorId, req = null) {
 /**
  * List stock transfer requests with filtering
  */
-async function listTransferRequests(companyId, filters = {}) {
+async function listTransferRequests(companyId, filters = {}, user = null) {
   const { status, warehouseId, search } = filters;
   const where = { companyId };
+  const andConditions = [];
+
+  if (user?.role === "WAREHOUSE") {
+    andConditions.push({ OR: [
+      { fromWarehouse: { managerId: user.id } },
+      { toWarehouse: { managerId: user.id } },
+    ] });
+  }
 
   if (status) {
     where.status = status;
   }
 
   if (warehouseId) {
-    where.OR = [
+    andConditions.push({ OR: [
       { fromWarehouseId: warehouseId },
       { toWarehouseId: warehouseId },
-    ];
+    ] });
   }
 
   if (search) {
-    where.OR = [
+    andConditions.push({ OR: [
       { transferNumber: { contains: search, mode: "insensitive" } },
       { notes: { contains: search, mode: "insensitive" } },
       { fromWarehouse: { name: { contains: search, mode: "insensitive" } } },
       { toWarehouse: { name: { contains: search, mode: "insensitive" } } },
       { product: { name: { contains: search, mode: "insensitive" } } },
-    ];
+    ] });
   }
+  if (andConditions.length > 0) where.AND = andConditions;
 
   return await prisma.stockTransferRequest.findMany({
     where,
@@ -1094,7 +1164,7 @@ async function listTransferRequests(companyId, filters = {}) {
  * Approve & complete a stock transfer request
  * Atomically deducts stock from source warehouse and adds to destination warehouse
  */
-async function approveAndCompleteTransfer(companyId, transferId, actorId, req = null) {
+async function approveAndCompleteTransfer(companyId, transferId, actorId, req = null, user = null) {
   const transfer = await prisma.stockTransferRequest.findFirst({
     where: { id: transferId, companyId },
     include: {
@@ -1108,6 +1178,10 @@ async function approveAndCompleteTransfer(companyId, transferId, actorId, req = 
     const error = new Error("Stock transfer request not found.");
     error.statusCode = 404;
     throw error;
+  }
+
+  if (user?.role === "WAREHOUSE") {
+    await assertManagedWarehouse(companyId, transfer.fromWarehouseId, user);
   }
 
   if (transfer.status !== "REQUESTED") {
@@ -1239,7 +1313,7 @@ async function approveAndCompleteTransfer(companyId, transferId, actorId, req = 
 /**
  * Reject a stock transfer request
  */
-async function rejectTransferRequest(companyId, transferId, reason, actorId, req = null) {
+async function rejectTransferRequest(companyId, transferId, reason, actorId, req = null, user = null) {
   const transfer = await prisma.stockTransferRequest.findFirst({
     where: { id: transferId, companyId },
   });
@@ -1248,6 +1322,10 @@ async function rejectTransferRequest(companyId, transferId, reason, actorId, req
     const error = new Error("Stock transfer request not found.");
     error.statusCode = 404;
     throw error;
+  }
+
+  if (user?.role === "WAREHOUSE") {
+    await assertManagedWarehouse(companyId, transfer.fromWarehouseId, user);
   }
 
   if (transfer.status !== "REQUESTED") {

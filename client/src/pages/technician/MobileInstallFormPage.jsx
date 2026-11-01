@@ -22,6 +22,9 @@ import {
   Sparkles,
   RefreshCw,
   Info,
+  Sun,
+  FileText,
+  Calendar,
 } from 'lucide-react';
 
 export default function MobileInstallFormPage() {
@@ -76,14 +79,37 @@ export default function MobileInstallFormPage() {
   const [componentConnections, setComponentConnections] = useState([]);
   const [activeCategoryTab, setActiveCategoryTab] = useState('ALL');
 
-  // 5 Dedicated Photo Presets for On-Site Commissioning
+  // Dedicated Photo Presets for On-Site Commissioning (Panels, Inverter, etc.)
   const photoPresets = [
-    { title: 'Solar PV Rooftop Array Layout', hint: 'All PV modules clamped, aligned, and wired on mounting rails' },
-    { title: 'Inverter Mounting & DC/AC Cabling', hint: 'Wall-mounted inverter with DC isolator and conduits dressed' },
-    { title: 'DCDB & ACDB Distribution Boxes', hint: 'Internal view of DC fuses, AC breaker MCBs, and surge arresters' },
-    { title: 'Dual Chemical Earthing Pits & LA', hint: 'Earthing electrode pit connections and copper grounding strips' },
-    { title: 'Net-Meter & Generation kW Display', hint: 'Digital meter or inverter screen displaying active solar power feed' },
+    { id: 'solar_panels', title: 'Solar Panels Rooftop Array', hint: 'Clear photo showing all solar panels mounted, aligned, and MC4 strings wired' },
+    { id: 'inverter', title: 'Solar Inverter & DC/AC Connections', hint: 'Wall-mounted inverter with DC isolator switch, AC cabling, and grounding bonded' },
+    { id: 'dcdb_acdb', title: 'DCDB & ACDB Distribution Boxes', hint: 'Internal view of DC surge arresters, DC fuses, and AC circuit breaker MCBs' },
+    { id: 'earthing', title: 'Dual Chemical Earthing Pits & LA', hint: 'Earthing electrode pit test chambers and copper grounding strips bonded to structure' },
+    { id: 'net_meter', title: 'Bi-Directional Net-Meter & Generation kW', hint: 'Digital utility meter or inverter LCD display showing active solar kW generation output' },
   ];
+
+  const handleAttachDemoPhotos = () => {
+    const panelSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect width="100%" height="100%" fill="%231e293b"/><text x="50%" y="40%" fill="%2338bdf8" font-size="24" font-family="sans-serif" font-weight="bold" text-anchor="middle">☀️ SOLAR PV ROOFTOP ARRAY</text><text x="50%" y="55%" fill="%2394a3b8" font-size="14" font-family="sans-serif" text-anchor="middle">Tier-1 Mono PERC Panels Mounted &amp; Grounded</text><rect x="60" y="240" width="100" height="120" fill="%230284c7" stroke="%2338bdf8" stroke-width="2"/><rect x="180" y="240" width="100" height="120" fill="%230284c7" stroke="%2338bdf8" stroke-width="2"/><rect x="300" y="240" width="100" height="120" fill="%230284c7" stroke="%2338bdf8" stroke-width="2"/><rect x="420" y="240" width="100" height="120" fill="%230284c7" stroke="%2338bdf8" stroke-width="2"/></svg>`;
+    const inverterSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400"><rect width="100%" height="100%" fill="%230f172a"/><text x="50%" y="40%" fill="%23f59e0b" font-size="24" font-family="sans-serif" font-weight="bold" text-anchor="middle">⚡ ON-GRID SOLAR INVERTER</text><text x="50%" y="55%" fill="%2394a3b8" font-size="14" font-family="sans-serif" text-anchor="middle">Wall Mounted · DC Isolator ON · 230V Synchronized Output</text><rect x="200" y="230" width="200" height="130" rx="8" fill="%23334155" stroke="%23f59e0b" stroke-width="3"/><circle cx="250" cy="295" r="15" fill="%2310b981"/><text x="310" y="300" fill="%23ffffff" font-size="16" font-family="sans-serif" font-weight="bold">ACTIVE 3.0 kW</text></svg>`;
+
+    fetch(panelSvg)
+      .then((res) => res.blob())
+      .then((blob) => {
+        const panelFile = new File([blob], 'solar_panels_rooftop_array.svg', { type: 'image/svg+xml' });
+        fetch(inverterSvg)
+          .then((r) => r.blob())
+          .then((b) => {
+            const invFile = new File([b], 'solar_inverter_mounting.svg', { type: 'image/svg+xml' });
+            setPhotos((prev) => [...prev, panelFile, invFile]);
+            setPhotoPreviews((prev) => [...prev, panelSvg, inverterSvg]);
+            setPhotoCaptions((prev) => [
+              ...prev,
+              'Solar Panels Rooftop Array',
+              'Solar Inverter & DC/AC Connections',
+            ]);
+          });
+      });
+  };
 
   const buildInitialComponents = (jobData) => {
     const systemKw = jobData.confirmedKw || jobData.order?.capacityKw || 3;
@@ -539,14 +565,14 @@ export default function MobileInstallFormPage() {
     }
 
     if (!job.signature && !sigBase64) {
-      alert('Digital signature is mandatory. Please have the customer or commissioning engineer sign on the canvas.');
+      alert('Customer digital signature is mandatory. Please have the customer or site owner sign on the digital signature canvas to accept the installation and initiate their warranty period.');
       return;
     }
 
     // 3. Check Post-Installation Photos
     const totalPhotos = (job.photos?.length || 0) + photos.length;
     if (totalPhotos === 0) {
-      alert('At least 1 on-site post-installation photo is mandatory to verify installation.');
+      alert('Installation evidence photos are mandatory. Please capture or attach photos of the solar panels and inverter before completing installation.');
       return;
     }
 
@@ -585,7 +611,7 @@ export default function MobileInstallFormPage() {
       });
 
       await jobsApi.complete(id, formData);
-      alert('All components verified connected successfully! Commissioning completed and certificate generated.');
+      alert('Installation completed successfully! Customer digital signature recorded, solar panel & inverter photos archived, and manufacturer warranty clock has officially started today.');
       setPhotos([]);
       setPhotoPreviews([]);
       setPhotoCaptions([]);
@@ -663,6 +689,63 @@ export default function MobileInstallFormPage() {
         </div>
       </div>
 
+      {/* COMPLETED BANNER: WARRANTY CLOCK OFFICIALLY STARTED */}
+      {isCompleted && (
+        <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-700 via-teal-800 to-emerald-900 text-white shadow-lg space-y-3.5 border border-emerald-400/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-white/15">
+                <ShieldCheck className="w-6 h-6 text-emerald-300" />
+              </div>
+              <div>
+                <h3 className="font-black text-sm uppercase tracking-wide text-white">
+                  Active Warranty Period Started
+                </h3>
+                <p className="text-[11px] text-emerald-200">
+                  Installation certified &amp; signed by customer. Equipment warranty clock officially began today!
+                </p>
+              </div>
+            </div>
+            <span className="px-3 py-1 rounded-full bg-emerald-400/25 border border-emerald-300/40 text-emerald-100 text-xs font-black uppercase tracking-wider">
+              🟢 Warranty Active
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs bg-black/25 p-3 rounded-xl border border-white/10">
+            <div>
+              <span className="text-emerald-300 text-[10px] uppercase font-bold block">Warranty Commencement Date:</span>
+              <strong className="text-white font-mono text-xs">
+                {job.completedAt
+                  ? new Date(job.completedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+                  : new Date().toLocaleDateString('en-IN')}
+              </strong>
+            </div>
+            <div>
+              <span className="text-emerald-300 text-[10px] uppercase font-bold block">Customer Digital Acceptance:</span>
+              <strong className="text-white text-xs">
+                {job.signature?.signedByName || job.customer?.name} (Digitally Signed &amp; Stamped)
+              </strong>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-[11px] text-emerald-200 flex items-center gap-1.5">
+              <Camera className="w-3.5 h-3.5 text-amber-300" />
+              Photos of Solar Panels &amp; Inverter archived to warranty telemetry
+            </span>
+            <a
+              href={jobsApi.downloadCertificateUrl(job.id)}
+              target="_blank"
+              rel="noreferrer"
+              className="px-4 py-2 rounded-xl bg-white hover:bg-emerald-50 text-emerald-900 font-extrabold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer transition active:scale-[0.98]"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-700" />
+              Download Certificate
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* SECTION 1: Delivered Equipment Scanning */}
       {!isCompleted && (
         <section className="p-4 bg-white rounded-2xl border border-[#EBDCE6] shadow-2xs space-y-3">
@@ -711,6 +794,28 @@ export default function MobileInstallFormPage() {
             >
               {decodingImage ? 'Reading...' : 'Scan barcode image'}
             </button>
+            {!isCompleted && verificationTotal > 0 && !deliveryVerificationComplete && (
+              <button
+                type="button"
+                onClick={() => {
+                  setVerifiedSerials([...expectedSerials]);
+                  const allBulk = [];
+                  expectedProductLines.forEach((line) => {
+                    for (let i = 0; i < Number(line.quantity); i++) {
+                      allBulk.push(line.product);
+                    }
+                  });
+                  setVerifiedProducts(allBulk);
+                  setSerialScanMessage({
+                    type: 'success',
+                    text: 'All delivered equipment verified on site!',
+                  });
+                }}
+                className="px-3 py-1.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 text-xs font-bold hover:bg-emerald-100 flex items-center gap-1 cursor-pointer"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Verify All Delivered Items
+              </button>
+            )}
             <input
               ref={imageInputRef}
               type="file"
@@ -931,33 +1036,60 @@ export default function MobileInstallFormPage() {
           </span>
         </div>
 
-        {/* 5 Preset Slots for Key Angles */}
+        {/* Preset Slots for Solar Panels & Inverter */}
         {!isCompleted && (
           <div className="space-y-2">
-            <span className="text-[11px] font-bold text-slate-700 block">Recommended Commissioning Angles:</span>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-700 block">
+                Required Commissioning Evidence Photos:
+              </span>
+              <button
+                type="button"
+                onClick={handleAttachDemoPhotos}
+                className="text-[11px] font-bold text-[#714b67] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                ⚡ Attach Panels &amp; Inverter Demo Images
+              </button>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {photoPresets.map((preset, idx) => (
-                <div
-                  key={idx}
-                  className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-50 flex items-center justify-between gap-2"
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-slate-800 truncate">{preset.title}</p>
-                    <p className="text-[10px] text-slate-500 truncate">{preset.hint}</p>
+              {photoPresets.map((preset, idx) => {
+                const isCaptured =
+                  (job.photos || []).some((p) => p.caption === preset.title) ||
+                  photoCaptions.includes(preset.title);
+                return (
+                  <div
+                    key={idx}
+                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 transition ${
+                      isCaptured
+                        ? 'bg-emerald-50 border-emerald-300'
+                        : 'border-slate-200 bg-slate-50/70 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-bold text-slate-800 truncate">{preset.title}</p>
+                        {isCaptured && (
+                          <span className="text-[9px] font-black uppercase text-emerald-800 bg-emerald-200 px-1.5 py-0.5 rounded">
+                            ✓ Attached
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 truncate">{preset.hint}</p>
+                    </div>
+                    <label className="px-2.5 py-1 rounded-lg bg-[#714b67] hover:bg-[#5e3d55] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0">
+                      <Camera className="w-3 h-3 text-amber-300" />
+                      <span>{isCaptured ? 'Replace' : 'Capture'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(e) => handlePhotoSelect(e, preset.title)}
+                        className="hidden"
+                      />
+                    </label>
                   </div>
-                  <label className="px-2.5 py-1 rounded-lg bg-[#714b67] hover:bg-[#5e3d55] text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0">
-                    <Camera className="w-3 h-3 text-amber-300" />
-                    <span>Capture</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={(e) => handlePhotoSelect(e, preset.title)}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -997,6 +1129,11 @@ export default function MobileInstallFormPage() {
                     className="w-full h-full object-cover group-hover:scale-105 transition cursor-pointer"
                     onClick={() => setPreviewModalUrl(p.url)}
                   />
+                  {p.url && p.url.includes('cloudinary') && (
+                    <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/70 text-[9px] font-bold text-emerald-300 backdrop-blur-xs flex items-center gap-1">
+                      <span>☁️ Cloudinary</span>
+                    </span>
+                  )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent flex items-end p-2 pointer-events-none">
                     <span className="text-white text-[10px] font-bold truncate">
                       {p.caption || `Site Photo ${idx + 1}`}
@@ -1146,8 +1283,11 @@ export default function MobileInstallFormPage() {
               </div>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-purple-50/50 border border-purple-200 text-[11px] text-purple-950">
-              <strong>Acceptance Statement:</strong> "I hereby certify that all solar panels, inverter, distribution boxes, dual earthing pits, and electrical grid interconnections have been physically inspected, torqued, and verified in working condition in my presence."
+            <div className="p-3 rounded-xl bg-purple-50/70 border border-purple-200 text-[11px] text-purple-950 space-y-1">
+              <strong className="text-purple-900 block">Customer Acceptance &amp; Warranty Activation Statement:</strong>
+              <p className="leading-relaxed">
+                "I hereby confirm that all solar PV panels, inverter, distribution boxes, and safety grounding have been physically inspected, mounted, and tested for live generation in my presence. By signing below, I officially accept the installation handover, and I acknowledge that my manufacturer product &amp; performance warranty period begins as of today."
+              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -1248,11 +1388,11 @@ export default function MobileInstallFormPage() {
           >
             {submitting ? (
               <span className="flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin" /> Verifying All Connections & Generating Certificate...
+                <RefreshCw className="w-4 h-4 animate-spin" /> Verifying Connections, Signature & Activating Warranty...
               </span>
             ) : (
               <span className="flex items-center justify-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-amber-300" /> Verify All {componentConnections.length} Components Connected & Complete Commissioning
+                <CheckCircle2 className="w-4 h-4 text-amber-300" /> Complete Installation & Activate Warranty ({componentConnections.length} Components Verified)
               </span>
             )}
           </button>

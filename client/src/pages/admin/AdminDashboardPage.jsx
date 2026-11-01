@@ -30,6 +30,8 @@ import {
   Search,
   Filter,
   Check,
+  RefreshCw,
+  Camera,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -130,20 +132,34 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const fetchStats = async () => {
-    setLoading(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
+
+  const fetchStats = async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
+    else setIsRefreshing(true);
     try {
       const res = await dashboardApi.getStats(timeframe);
       setData(res.data?.data);
+      setLastUpdated(new Date());
     } catch (err) {
       console.error('Failed to load dashboard stats:', err);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
-    fetchStats();
+    fetchStats(false);
+  }, [timeframe]);
+
+  // Periodic Auto-refresh (Updates telemetry, KPIs, and graphs automatically every 10 seconds)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchStats(true);
+    }, 10000);
+    return () => clearInterval(timer);
   }, [timeframe]);
 
   const handleGenerateShareLink = async () => {
@@ -231,6 +247,19 @@ export default function AdminDashboardPage() {
                 {t}
               </button>
             ))}
+          </div>
+
+          {/* Live Telemetry Auto-updating Indicator */}
+          <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200 shadow-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="hidden sm:inline">Live Sync (10s)</span>
+            <button
+              onClick={() => fetchStats(false)}
+              title="Refresh telemetry now"
+              className="ml-1 p-0.5 hover:text-emerald-950 transition cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
           </div>
 
           {/* Export CSV Button */}
@@ -396,15 +425,15 @@ export default function AdminDashboardPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-slate-900"></span>
-              Revenue vs Collections (Fiscal INR)
+              Revenue, Costs &amp; Profit ({timeframe === 'today' ? 'Today - Hourly' : timeframe === 'week' ? 'Past 7 Days' : timeframe === 'month' ? 'Past 30 Days' : 'All Time Monthly'})
             </h2>
-            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-              Odoo FinEngine
+            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+              {timeframe} Telemetry
             </span>
           </div>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data?.charts?.monthlyTrends || []}>
+              <BarChart key={`trend-${timeframe}-${data?.charts?.monthlyTrends?.length}`} data={data?.charts?.monthlyTrends || []}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                 <XAxis dataKey="month" stroke="#64748B" fontSize={11} fontWeight={600} />
                 <YAxis
@@ -420,6 +449,8 @@ export default function AdminDashboardPage() {
                 <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px', fontWeight: 600 }} />
                 <Bar dataKey="revenue" fill="#0F766E" name="Billed Revenue" radius={[6, 6, 0, 0]} />
                 <Bar dataKey="collections" fill="#10B981" name="Collections Received" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="directCosts" fill="#714B67" name="Direct Costs" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="netProfit" fill="#F59E0B" name="Net Profit" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -429,15 +460,15 @@ export default function AdminDashboardPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-black text-slate-900 flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-              Sales Funnel Conversion Velocity
+              Sales Funnel Conversion Velocity ({timeframe === 'today' ? 'Today' : timeframe === 'week' ? 'This Week' : timeframe === 'month' ? 'This Month' : 'All Time'})
             </h2>
-            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 border border-[#f09e38]/30">
-              Live Pipeline
+            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 border border-[#f09e38]/30 uppercase">
+              {timeframe} Pipeline
             </span>
           </div>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data?.charts?.leadsByStage || []} layout="vertical">
+              <BarChart key={`funnel-${timeframe}-${data?.charts?.leadsByStage?.length}`} data={data?.charts?.leadsByStage || []} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E2E8F0" />
                 <XAxis type="number" stroke="#64748B" fontSize={11} fontWeight={600} allowDecimals={false} />
                 <YAxis type="category" dataKey="stage" width={115} stroke="#64748B" fontSize={10} fontWeight={600} />
@@ -458,7 +489,12 @@ export default function AdminDashboardPage() {
                 <Receipt className="w-4 h-4 text-[#714b67]" />
               </span>
               <div>
-                <h2 className="text-base font-black text-slate-900 tracking-tight">Order Profit &amp; Loss (P&amp;L) Ledger</h2>
+                <h2 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  Order Profit &amp; Loss (P&amp;L) Ledger
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                    {timeframe} ({allJobCostings.length} Orders)
+                  </span>
+                </h2>
                 <p className="text-xs text-slate-500 font-medium">
                   Detailed job costing breakdown: Equipment BOM, technician labor payouts, net profitability, and gross margin per order.
                 </p>
@@ -523,6 +559,15 @@ export default function AdminDashboardPage() {
             >
               <Download className="w-3.5 h-3.5 text-slate-500" /> Export CSV
             </button>
+
+            {/* View Cloudinary Evidences Button */}
+            <Link
+              to="/technician/jobs"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-[#714b67] text-xs font-bold transition shadow-2xs"
+            >
+              <Camera className="w-3.5 h-3.5 text-[#714b67]" />
+              <span>Commissioning Evidences (Cloudinary)</span>
+            </Link>
           </div>
         </div>
 
@@ -558,8 +603,18 @@ export default function AdminDashboardPage() {
                     }`}
                   >
                     <td className="py-3 px-4">
-                      <div className="font-black text-slate-950 font-mono text-xs">
-                        {job.orderNumber}
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-black text-slate-950 font-mono text-xs">
+                          {job.orderNumber}
+                        </span>
+                        <Link
+                          to="/technician/jobs"
+                          title="View Site Installation Photos & Cloudinary Evidences"
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-purple-50 hover:bg-purple-100 text-[#714b67] text-[10px] font-bold border border-purple-200 transition"
+                        >
+                          <Camera className="w-2.5 h-2.5" />
+                          <span>Photos</span>
+                        </Link>
                       </div>
                       <div className="text-[11px] text-slate-500 font-medium">
                         {job.customerName || 'Direct Customer'}

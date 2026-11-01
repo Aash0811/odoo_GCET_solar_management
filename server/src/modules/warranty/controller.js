@@ -3,12 +3,6 @@ const warrantyService = require("./service");
 async function searchWarranties(req, res, next) {
   try {
     const query = req.query.q || "";
-    if (!query.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Search query 'q' (customer name, phone, or serial number) is required.",
-      });
-    }
 
     const results = await warrantyService.searchWarranties(req.companyId, query, {
       page: req.query.page,

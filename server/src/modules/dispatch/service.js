@@ -11,6 +11,9 @@ async function getPickLists(companyId, filters = {}, user = null) {
     where.status = "COMPLETED";
     where.order = { status: { not: "DELIVERED" } };
   }
+  if (user?.role === "WAREHOUSE") {
+    where.warehouse = { managerId: user.id };
+  }
 
   return await prisma.pickList.findMany({
     where,
@@ -60,7 +63,15 @@ async function getPickLists(companyId, filters = {}, user = null) {
 }
 
 async function assignDeliveryAgent(companyId, pickListId, deliveryAgentId, actorId, req = null) {
-  const pickList = await prisma.pickList.findFirst({ where: { id: pickListId, companyId } });
+  const pickList = await prisma.pickList.findFirst({
+    where: {
+      id: pickListId,
+      companyId,
+      ...(req?.user?.role === "WAREHOUSE"
+        ? { OR: [{ warehouse: null }, { warehouse: { managerId: req.user.id } }] }
+        : {}),
+    },
+  });
   if (!pickList) {
     const error = new Error("Pick list not found.");
     error.statusCode = 404;
@@ -151,6 +162,31 @@ async function updateDeliveryStatus(companyId, orderId, status, data, actorId, r
     error.statusCode = 400;
     throw error;
   }
+
+  // When delivery leaves warehouse (IN_TRANSIT), update serial numbers to DISPATCHED (Loaded on Van)
+  if (status === "IN_TRANSIT") {
+    if (data.loadedVanSerials && Array.isArray(data.loadedVanSerials) && data.loadedVanSerials.length > 0) {
+      const cleanSerials = data.loadedVanSerials.map((s) => String(s).trim());
+      await prisma.serialNumber.updateMany({
+        where: {
+          companyId,
+          orderId,
+          serial: { in: cleanSerials },
+        },
+        data: {
+          status: "DISPATCHED",
+        },
+      });
+    } else {
+      await prisma.serialNumber.updateMany({
+        where: { companyId, orderId },
+        data: {
+          status: "DISPATCHED",
+        },
+      });
+    }
+  }
+
   const updated = await prisma.delivery.update({
     where: { id: delivery.id },
     data: {
@@ -183,7 +219,12 @@ async function updateDeliveryStatus(companyId, orderId, status, data, actorId, r
 
 async function getPickListById(companyId, id, user = null) {
   const pickList = await prisma.pickList.findFirst({
-    where: { id, companyId, ...(user?.role === "DELIVERY_AGENT" ? { deliveryAgentId: user.id } : {}) },
+    where: {
+      id,
+      companyId,
+      ...(user?.role === "DELIVERY_AGENT" ? { deliveryAgentId: user.id } : {}),
+      ...(user?.role === "WAREHOUSE" ? { warehouse: { managerId: user.id } } : {}),
+    },
     include: {
       warehouse: true,
       deliveryAgent: { select: { id: true, name: true, phone: true } },
@@ -274,6 +315,12 @@ async function scanSerial(companyId, data, actorId, req = null) {
     where: { orderId: order.id, companyId },
     include: { warehouse: true },
   });
+
+  if (req?.user?.role === "WAREHOUSE" && (!pickList || pickList.warehouse?.managerId !== req.user.id)) {
+    const error = new Error("You can only scan stock for pick lists assigned to your warehouse.");
+    error.statusCode = 403;
+    throw error;
+  }
 
   if (pickList && pickList.warehouseId) {
     const whStock = await prisma.warehouseStock.findUnique({
@@ -384,7 +431,13 @@ async function pickItem(companyId, data, actorId, req = null) {
   }
 
   const pickList = await prisma.pickList.findFirst({
-    where: { id: pickListId, companyId },
+    where: {
+      id: pickListId,
+      companyId,
+      ...(req?.user?.role === "WAREHOUSE"
+        ? { warehouse: { managerId: req.user.id } }
+        : {}),
+    },
     include: { warehouse: true },
   });
 
@@ -467,7 +520,13 @@ async function pickItem(companyId, data, actorId, req = null) {
  */
 async function assignWarehouseToPickList(companyId, pickListId, warehouseId, actorId, req = null) {
   const pickList = await prisma.pickList.findFirst({
-    where: { id: pickListId, companyId },
+    where: {
+      id: pickListId,
+      companyId,
+      ...(req?.user?.role === "WAREHOUSE"
+        ? { OR: [{ warehouse: null }, { warehouse: { managerId: req.user.id } }] }
+        : {}),
+    },
   });
 
   if (!pickList) {
@@ -477,7 +536,11 @@ async function assignWarehouseToPickList(companyId, pickListId, warehouseId, act
   }
 
   const warehouse = await prisma.warehouse.findFirst({
-    where: { id: warehouseId, companyId },
+    where: {
+      id: warehouseId,
+      companyId,
+      ...(req?.user?.role === "WAREHOUSE" ? { managerId: req.user.id } : {}),
+    },
   });
 
   if (!warehouse) {
@@ -802,14 +865,42 @@ async function validateDelivery(companyId, orderId, deliveryData = {}, actorId, 
       }
     }
 
-    // 7. Notify Technician team that materials are on site and install can proceed
+    // 7. Update InstallationJob and notify Technician team that materials are on site and install can proceed
+    const installJob = await tx.installationJob.findFirst({
+      where: { orderId: order.id, companyId },
+    });
+    if (installJob) {
+      await tx.installationJob.update({
+        where: { id: installJob.id },
+        data: {
+          notes: installJob.notes
+            ? `${installJob.notes}\n[LOGISTICS]: Equipment 100% delivered to customer site. Delivery van empty and verified.`
+            : `[LOGISTICS]: Equipment 100% delivered to customer site. Delivery van empty and verified. Ready for technician installation.`,
+        },
+      });
+      if (installJob.technicianId) {
+        await createNotification(
+          {
+            companyId,
+            userId: installJob.technicianId,
+            type: "DISPATCH_READY",
+            title: "Equipment Delivered to Site",
+            message: `Equipment for Job ${installJob.jobNumber} (Order ${order.orderNumber}) has been delivered to customer site. Delivery van verified empty. Ready for technician installation.`,
+            entityType: "InstallationJob",
+            entityId: installJob.id,
+          },
+          tx
+        );
+      }
+    }
+
     await notifyRole(
       companyId,
       "TECHNICIAN",
       {
         type: "DISPATCH_READY",
         title: "Materials Delivered to Site",
-        message: `Delivery ${deliveryNumber} completed for Order ${order.orderNumber}. Installation job is ready to begin.`,
+        message: `Delivery ${deliveryNumber} completed for Order ${order.orderNumber}. All materials scanned and verified at customer house. Installation job is ready to begin.`,
         entityType: "Delivery",
         entityId: delivery.id,
       },
@@ -871,7 +962,16 @@ async function lookupBarcode(companyId, code) {
           unit: true,
           warrantyYears: true,
           salePrice: true,
+          costPrice: true,
           productType: true,
+          stockQty: true,
+          warehouseStocks: {
+            include: {
+              warehouse: {
+                select: { id: true, name: true, code: true, city: true, zone: true },
+              },
+            },
+          },
         },
       },
       order: {
@@ -880,6 +980,7 @@ async function lookupBarcode(companyId, code) {
           orderNumber: true,
           capacityKw: true,
           status: true,
+          totalAmount: true,
           customer: {
             select: {
               id: true,
@@ -889,6 +990,35 @@ async function lookupBarcode(companyId, code) {
               address: true,
             },
           },
+          deliveries: {
+            select: {
+              id: true,
+              status: true,
+              deliveryNumber: true,
+              deliveryDate: true,
+              validatedAt: true,
+              deliveredTo: true,
+              deliveryAgent: {
+                select: { id: true, name: true, phone: true },
+              },
+            },
+            take: 1,
+            orderBy: { createdAt: "desc" },
+          },
+          installationJobs: {
+            select: {
+              id: true,
+              jobNumber: true,
+              status: true,
+              scheduledAt: true,
+              completedAt: true,
+              technician: {
+                select: { id: true, name: true, phone: true },
+              },
+            },
+            take: 1,
+            orderBy: { createdAt: "desc" },
+          },
         },
       },
       customer: {
@@ -897,6 +1027,7 @@ async function lookupBarcode(companyId, code) {
           name: true,
           phone: true,
           city: true,
+          address: true,
         },
       },
       warranties: {
@@ -913,18 +1044,61 @@ async function lookupBarcode(companyId, code) {
 
   if (serialRecord) {
     const warranty = serialRecord.warranties?.[0] || null;
+    const latestDelivery = serialRecord.order?.deliveries?.[0] || null;
+    const latestJob = serialRecord.order?.installationJobs?.[0] || null;
+
+    let lifecycleStage = "IN_STOCK";
+    let lifecycleLabel = "In Warehouse Stock (Available)";
+    let lifecycleBadgeColor = "green";
+    let lifecycleDescription = "Item is in warehouse inventory, ready to be allocated or dispatched.";
+
+    if (serialRecord.status === "INSTALLED" || latestJob?.status === "COMPLETED") {
+      lifecycleStage = "INSTALLED";
+      lifecycleLabel = "Installed & Commissioned at Site";
+      lifecycleBadgeColor = "purple";
+      lifecycleDescription = "Equipment successfully mounted, wired, safety-checked, and commissioned at customer site.";
+    } else if (serialRecord.deliveredAt || latestDelivery?.status === "DELIVERED" || serialRecord.order?.status === "DELIVERED") {
+      lifecycleStage = "DELIVERED";
+      lifecycleLabel = "Delivered at Customer Site (Awaiting Technician Installation)";
+      lifecycleBadgeColor = "emerald";
+      lifecycleDescription = "Van sweep complete (0 items left in vehicle). Equipment safely delivered at customer home. Awaiting technician arrival.";
+    } else if (serialRecord.status === "DISPATCHED" || latestDelivery?.status === "IN_TRANSIT" || latestDelivery?.status === "ARRIVED") {
+      lifecycleStage = "IN_TRANSIT";
+      lifecycleLabel = "In Transit on Van (Traveling towards Customer House)";
+      lifecycleBadgeColor = "blue";
+      lifecycleDescription = "Scanned and loaded into delivery van. Traveling towards customer premises.";
+    } else if (serialRecord.status === "RESERVED" || serialRecord.orderId) {
+      lifecycleStage = "SOLD_ALLOCATED";
+      lifecycleLabel = "Sold / Allocated (Advance Paid - Not Yet Received by Customer)";
+      lifecycleBadgeColor = "amber";
+      lifecycleDescription = "Customer survey approved and advance deposit paid. Unit reserved for order, pending delivery van loading.";
+    }
+
     return {
       type: "SERIAL",
       found: true,
       serial: serialRecord.serial,
       status: serialRecord.status,
+      lifecycleStage,
+      lifecycleLabel,
+      lifecycleBadgeColor,
+      lifecycleDescription,
       scannedAt: serialRecord.scannedAt,
       deliveredAt: serialRecord.deliveredAt,
       installedAt: serialRecord.installedAt,
       product: serialRecord.product,
       order: serialRecord.order,
+      delivery: latestDelivery,
+      installationJob: latestJob,
       customer: serialRecord.customer,
       warranty,
+      warehouseStocks: (serialRecord.product?.warehouseStocks || []).map((ws) => ({
+        warehouseId: ws.warehouseId,
+        warehouseName: ws.warehouse.name,
+        city: ws.warehouse.city,
+        zone: ws.warehouse.zone,
+        quantity: Number(ws.quantity),
+      })),
     };
   }
 
@@ -953,6 +1127,10 @@ async function lookupBarcode(companyId, code) {
       type: "PRODUCT_SKU",
       found: true,
       sku: productRecord.sku,
+      lifecycleStage: "IN_STOCK",
+      lifecycleLabel: "Catalog Item (Warehouse Stock)",
+      lifecycleBadgeColor: "green",
+      lifecycleDescription: "Standard product SKU. Use Inward (+ Input) or Outward (- Output) to manage warehouse stock levels.",
       product: {
         id: productRecord.id,
         name: productRecord.name,

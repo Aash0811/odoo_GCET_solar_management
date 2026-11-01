@@ -568,6 +568,53 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
       include: { lines: true },
     });
 
+    // Automation 1b: Reserve available in-stock serial units for this order ("Sold / Allocated - Advance Paid - Not Received by Customer")
+    for (const [prodId, lineInfo] of productLineMap.entries()) {
+      const prod = await tx.product.findUnique({
+        where: { id: prodId },
+        select: { id: true, isSerialTracked: true },
+      });
+      if (prod?.isSerialTracked) {
+        const requiredQty = Math.floor(lineInfo.requiredQty);
+        const availableSerials = await tx.serialNumber.findMany({
+          where: {
+            companyId,
+            productId: prodId,
+            status: "IN_STOCK",
+            orderId: null,
+          },
+          take: requiredQty,
+        });
+
+        if (availableSerials.length > 0) {
+          await tx.serialNumber.updateMany({
+            where: {
+              id: { in: availableSerials.map((s) => s.id) },
+            },
+            data: {
+              orderId: order.id,
+              customerId: order.customerId,
+              status: "RESERVED",
+              scannedAt: new Date(),
+            },
+          });
+        }
+      }
+    }
+
+    // Update pick lines picked count if any serials were reserved
+    for (const [prodId] of productLineMap.entries()) {
+      const reservedCount = await tx.serialNumber.count({
+        where: { orderId: order.id, productId: prodId },
+      });
+      if (reservedCount > 0) {
+        await tx.pickLine.updateMany({
+          where: { pickListId: pickList.id, productId: prodId },
+          data: { pickedQty: reservedCount },
+        });
+      }
+    }
+
     // Automation 2: Automatically create InstallationJob for technician calendar
     const jobCount = await tx.installationJob.count({ where: { companyId } });
     const jobNumber = `JOB-${new Date().getFullYear()}-${String(jobCount + 1).padStart(4, "0")}`;

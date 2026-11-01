@@ -16,6 +16,12 @@ import {
   CheckCircle2,
   Filter,
   ShieldCheck,
+  Truck,
+  Camera,
+  Eye,
+  FileText,
+  X,
+  ExternalLink,
 } from 'lucide-react';
 
 export default function TechnicianJobsPage() {
@@ -29,6 +35,7 @@ export default function TechnicianJobsPage() {
   const [filterType, setFilterType] = useState('ALL'); // 'ALL', 'UNASSIGNED', 'ASSIGNED'
   const [assigningJobId, setAssigningJobId] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -229,7 +236,99 @@ export default function TechnicianJobsPage() {
                     <p className="flex items-center gap-1.5 text-slate-500">
                       <Zap className="w-3.5 h-3.5 text-[#f09e38]" /> {job.confirmedKw || job.order?.capacityKw || '3'} kW Rooftop System
                     </p>
+
+                    {/* Delivery Logistics Readiness */}
+                    <div className="pt-1">
+                      {job.order?.deliveries?.[0]?.status === 'DELIVERED' || job.order?.status === 'DELIVERED' ? (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-800 text-[11px] font-bold">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Equipment 100% Delivered to Customer Site (Van Swept Empty)</span>
+                        </div>
+                      ) : job.order?.deliveries?.[0]?.status === 'IN_TRANSIT' ? (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-300 text-sky-800 text-[11px] font-bold">
+                          <Truck className="w-3.5 h-3.5 text-sky-600 animate-pulse" />
+                          <span>Equipment In Transit on Delivery Van</span>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 text-[11px] font-medium">
+                          <span>Awaiting delivery van dispatch from warehouse</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Cloudinary Site Inspection Evidences & Customer Signature */}
+                  {((job.photos && job.photos.length > 0) || job.signature) && (
+                    <div className="p-3 rounded-xl bg-purple-50/70 border border-purple-200/90 space-y-2.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-[#714b67] flex items-center gap-1.5">
+                          <Camera className="w-3.5 h-3.5 text-[#714b67]" />
+                          Installation Evidences ({job.photos?.length || 0} Photos)
+                        </span>
+                        {job.photos?.some((p) => p.url?.includes('cloudinary')) ? (
+                          <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                            <span>☁️ Cloudinary Verified</span>
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
+                            Site Photos Attached
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Photo Thumbnails */}
+                      {job.photos && job.photos.length > 0 && (
+                        <div className="grid grid-cols-2 gap-2">
+                          {job.photos.map((p, idx) => (
+                            <div
+                              key={p.id || idx}
+                              onClick={() => setSelectedPhoto(p)}
+                              className="group relative rounded-lg overflow-hidden border border-purple-200 bg-slate-900 cursor-pointer shadow-xs hover:border-[#714b67] transition aspect-[4/3]"
+                            >
+                              <img
+                                src={p.url}
+                                alt={p.caption || 'Site Photo'}
+                                className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-center justify-center">
+                                <Eye className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition" />
+                              </div>
+                              <div className="absolute bottom-0 inset-x-0 bg-black/75 px-1.5 py-1 text-[9px] text-white font-medium truncate">
+                                {p.caption || `Photo ${idx + 1}`}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Customer Digital Signature Preview */}
+                      {job.signature && (
+                        <div className="pt-2 border-t border-purple-200/60 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <FileText className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="font-bold text-slate-700 text-[11px] truncate">
+                              Signed by: <span className="text-slate-900">{job.signature.signedByName}</span>
+                            </span>
+                          </div>
+                          {job.signature.imageUrl && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedPhoto({
+                                  url: job.signature.imageUrl,
+                                  caption: `Customer Digital Handover Signature - Signed by ${job.signature.signedByName}`,
+                                })
+                              }
+                              className="text-[10px] font-black text-[#714b67] underline hover:text-purple-900 cursor-pointer flex items-center gap-1 shrink-0"
+                            >
+                              <span>View Signature</span>
+                              <Eye className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Technician Assignment Section */}
                   <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
@@ -313,6 +412,57 @@ export default function TechnicianJobsPage() {
               );
             })
           )}
+        </div>
+      )}
+
+      {/* Cloudinary Image / Signature Full-Screen Lightbox Modal */}
+      {selectedPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-xs"
+          onClick={() => setSelectedPhoto(null)}
+        >
+          <div
+            className="relative max-w-3xl w-full bg-white rounded-2xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-3 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2 min-w-0">
+                <Camera className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs font-bold truncate">{selectedPhoto.caption || 'Commissioning Evidence Photo'}</span>
+              </div>
+              <button
+                onClick={() => setSelectedPhoto(null)}
+                className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 bg-slate-950 flex items-center justify-center max-h-[75vh] overflow-hidden">
+              <img
+                src={selectedPhoto.url}
+                alt={selectedPhoto.caption || 'Evidence'}
+                className="max-h-[70vh] w-auto object-contain rounded-lg"
+              />
+            </div>
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1 text-[11px] text-slate-500 font-mono truncate max-w-[70%]">
+                <span className="font-bold text-slate-700">Storage:</span>
+                <span className="text-blue-600 hover:underline truncate">
+                  {selectedPhoto.url}
+                </span>
+              </div>
+              <a
+                href={selectedPhoto.url}
+                target="_blank"
+                rel="noreferrer"
+                download
+                className="px-3 py-1 rounded-lg bg-[#714b67] text-white font-bold text-[11px] flex items-center gap-1 hover:bg-[#5e3d55]"
+              >
+                <span>Open Original</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
         </div>
       )}
     </div>

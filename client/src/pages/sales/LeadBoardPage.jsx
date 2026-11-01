@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { leadsApi, surveysApi } from '../../api';
+import { leadsApi, surveysApi, jobsApi } from '../../api';
 import { useAuth } from '../../hooks/useAuth';
 import useDebounce from '../../hooks/useDebounce';
 import {
@@ -148,8 +148,10 @@ export default function LeadBoardPage() {
     desiredCapacityKw: 3,
   });
 
+  const [technicians, setTechnicians] = useState([]);
   const [surveyForm, setSurveyForm] = useState({
     scheduledAt: '',
+    surveyedById: '',
     notes: '',
   });
 
@@ -200,9 +202,10 @@ export default function LeadBoardPage() {
         myLeadsOnly: myLeadsOnly ? 'true' : 'false',
       };
 
-      const [kanbanRes, repsRes] = await Promise.all([
+      const [kanbanRes, repsRes, techRes] = await Promise.all([
         leadsApi.getKanban(params),
         leadsApi.getSalesReps().catch(() => ({ data: { data: [] } })),
+        jobsApi.getTechnicians().catch(() => ({ data: { data: [] } })),
       ]);
 
       const kanbanData = kanbanRes.data?.data || {};
@@ -214,6 +217,7 @@ export default function LeadBoardPage() {
         setLeads(flatItems);
       }
       setSalesReps(repsRes.data?.data || []);
+      setTechnicians(techRes.data?.data || []);
     } catch (err) {
       console.error('Failed to load leads kanban:', err);
     } finally {
@@ -562,10 +566,11 @@ export default function LeadBoardPage() {
       await surveysApi.schedule({
         leadId: surveyModalLead.id,
         scheduledAt: surveyForm.scheduledAt,
+        surveyedById: surveyForm.surveyedById || null,
         notes: surveyForm.notes,
       });
       setSurveyModalLead(null);
-      setSurveyForm({ scheduledAt: '', notes: '' });
+      setSurveyForm({ scheduledAt: '', surveyedById: '', notes: '' });
       showToast('Survey Booked', 'Site survey scheduled. Field technician notified.');
       loadData();
     } catch (err) {
@@ -1030,7 +1035,7 @@ export default function LeadBoardPage() {
                               <button
                                 onClick={() => {
                                   setSurveyModalLead(lead);
-                                  setSurveyForm({ scheduledAt: '', notes: '' });
+                                  setSurveyForm({ scheduledAt: '', surveyedById: '', notes: '' });
                                 }}
                                 className="px-2.5 py-0.5 rounded-md bg-[#f09e38] text-white font-black hover:bg-[#d4821a] transition shadow-xs cursor-pointer"
                               >
@@ -1724,6 +1729,26 @@ export default function LeadBoardPage() {
                   onChange={(e) => setSurveyForm({ ...surveyForm, scheduledAt: e.target.value })}
                   className="w-full p-2.5 rounded-xl border border-[#EBDCE7] focus:ring-2 focus:ring-[#714B67] outline-none font-bold"
                 />
+              </div>
+              <div>
+                <label className="font-extrabold text-[#241621] mb-1 block">
+                  Assign Technician (Optional / Admin Discretion)
+                </label>
+                <select
+                  value={surveyForm.surveyedById || ''}
+                  onChange={(e) => setSurveyForm({ ...surveyForm, surveyedById: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] focus:ring-2 focus:ring-[#714B67] outline-none font-semibold text-xs bg-white cursor-pointer"
+                >
+                  <option value="">-- Assign Later by Admin Discretion --</option>
+                  {technicians.map((tech) => (
+                    <option key={tech.id} value={tech.id}>
+                      👤 {tech.name} ({tech.phone || 'No phone'}) • {tech.activeSurveysCount || 0} active surveys
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500 mt-1 font-medium">
+                  Leave unassigned to allow Admin to assign a technician later from the Site Surveys desk.
+                </p>
               </div>
               <div>
                 <label className="font-extrabold text-[#241621] mb-1 block">Survey Instructions for Field Tech</label>
