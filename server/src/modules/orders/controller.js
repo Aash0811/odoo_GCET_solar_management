@@ -2,7 +2,7 @@ const ordersService = require("./service");
 
 async function listOrders(req, res, next) {
   try {
-    const orders = await ordersService.getOrders(req.companyId, req.query);
+    const orders = await ordersService.getOrders(req.companyId, req.query, req.user);
     return res.status(200).json({
       success: true,
       data: orders,
@@ -15,7 +15,7 @@ async function listOrders(req, res, next) {
 
 async function getOrder(req, res, next) {
   try {
-    const order = await ordersService.getOrderById(req.companyId, req.params.id);
+    const order = await ordersService.getOrderById(req.companyId, req.params.id, req.user);
     return res.status(200).json({
       success: true,
       data: order,
@@ -45,7 +45,8 @@ async function recordPayment(req, res, next) {
       req.params.id,
       req.body,
       req.user.id,
-      req
+      req,
+      req.user
     );
 
     return res.status(200).json({
@@ -104,7 +105,8 @@ async function downloadPaymentReceipt(req, res, next) {
     const buffer = await ordersService.getPaymentReceiptPdfBuffer(
       req.companyId,
       req.params.id,
-      req.params.paymentId
+      req.params.paymentId,
+      req.user
     );
 
     res.setHeader("Content-Type", "application/pdf");

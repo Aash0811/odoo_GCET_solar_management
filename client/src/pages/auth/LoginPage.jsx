@@ -49,6 +49,7 @@ export default function LoginPage() {
     { role: 'SALESMAN', name: 'Sales Lead', email: 'sales@sunpower.com', path: '/sales/leads' },
     { role: 'ACCOUNTANT', name: 'Accountant', email: 'accountant@sunpower.com', path: '/sales/orders' },
     { role: 'WAREHOUSE', name: 'Stock & Serials', email: 'warehouse@sunpower.com', path: '/warehouse/dispatch' },
+    { role: 'DELIVERY_AGENT', name: 'Delivery Agent', email: 'delivery@sunpower.com', path: '/delivery/assigned' },
     { role: 'TECHNICIAN', name: 'Mobile Form', email: 'tech@sunpower.com', path: '/technician/jobs' },
     { role: 'SUPPORT', name: 'Service Desk', email: 'support@sunpower.com', path: '/support/tickets' },
   ];
@@ -62,6 +63,7 @@ export default function LoginPage() {
       if (user.role === 'CUSTOMER') navigate('/customer-portal');
       else if (user.role === 'TECHNICIAN') navigate('/technician/jobs');
       else if (user.role === 'WAREHOUSE') navigate('/warehouse/dispatch');
+      else if (user.role === 'DELIVERY_AGENT') navigate('/delivery/assigned');
       else if (user.role === 'SUPPORT') navigate('/support/tickets');
       else if (user.role === 'SALESMAN') navigate('/sales/leads');
       else navigate('/admin/dashboard');
@@ -172,6 +174,7 @@ export default function LoginPage() {
                       <ArrowRight className="w-3 h-3 text-[#aa789c] group-hover:text-[#f09e38] transition-transform group-hover:translate-x-0.5" />
                     </div>
                     <span className="text-[10px] text-[#dabfd2]">{demo.name}</span>
+                    <span className="text-[9px] text-[#aa789c] truncate">{demo.email}</span>
                   </button>
                 ))}
               </div>

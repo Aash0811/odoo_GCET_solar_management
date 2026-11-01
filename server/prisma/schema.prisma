@@ -16,6 +16,7 @@ enum UserRole {
   SALESMAN
   ACCOUNTANT
   WAREHOUSE
+  DELIVERY_AGENT
   TECHNICIAN
   SUPPORT
   CUSTOMER
@@ -112,6 +113,9 @@ enum SerialStatus {
 
 enum DeliveryStatus {
   DRAFT
+  ASSIGNED
+  IN_TRANSIT
+  ARRIVED
   VALIDATED
   DELIVERED
   CANCELLED
@@ -295,6 +299,8 @@ model User {
   createdQuotes    Quote[]           @relation("QuoteCreator")
   createdOrders    SalesOrder[]      @relation("OrderCreator")
   createdPickLists PickList[]        @relation("PickListCreator")
+  assignedDeliveryPickLists PickList[] @relation("DeliveryAgentPickLists")
+  deliveriesAsAgent Delivery[] @relation("DeliveryAgentDeliveries")
   assignedJobs     InstallationJob[] @relation("JobTechnician")
   createdTickets   Ticket[]          @relation("TicketCreator")
   assignedTickets  Ticket[]          @relation("TicketAssignee")
@@ -783,6 +789,7 @@ model PickList {
   orderId     String
   createdById String?
   warehouseId String?
+  deliveryAgentId String?
 
   pickNumber String
   status     PickListStatus @default(OPEN)
@@ -801,6 +808,7 @@ model PickList {
   createdBy User? @relation("PickListCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   warehouse Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  deliveryAgent User? @relation("DeliveryAgentPickLists", fields: [deliveryAgentId], references: [id], onDelete: SetNull)
 
   lines PickLine[]
 
@@ -808,6 +816,7 @@ model PickList {
   @@unique([orderId])
   @@index([companyId, status, createdAt])
   @@index([warehouseId])
+  @@index([deliveryAgentId, status])
 }
 
 model PickLine {
@@ -998,6 +1007,16 @@ model Delivery {
   deliveredAt  DateTime?
 
   deliveredTo String?
+  deliveryAgentId String?
+  deliveryAddress String?
+  recipientPhone String?
+  latitude Decimal? @db.Decimal(10, 7)
+  longitude Decimal? @db.Decimal(10, 7)
+  addressConfirmed Boolean @default(false)
+  customerAccepted Boolean @default(false)
+  customerAcceptedAt DateTime?
+  acceptanceSignature String?
+  acceptanceNotes String?
   notes       String?
 
   createdAt DateTime @default(now())
@@ -1008,10 +1027,12 @@ model Delivery {
   order SalesOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  deliveryAgent User? @relation("DeliveryAgentDeliveries", fields: [deliveryAgentId], references: [id], onDelete: SetNull)
 
   @@unique([companyId, deliveryNumber])
   @@index([companyId, status, deliveryDate])
   @@index([orderId, status])
+  @@index([deliveryAgentId, status])
 }
 
 model Warranty {

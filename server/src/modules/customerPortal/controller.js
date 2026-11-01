@@ -1,26 +1,32 @@
 const customerPortalService = require("./service");
 const prisma = require("../../config/prisma");
 
+async function findCustomerForUser(req) {
+  const identityFilters = [];
+  if (req.user.email) identityFilters.push({ email: req.user.email });
+  if (req.user.phone) identityFilters.push({ phone: req.user.phone });
+
+  if (identityFilters.length === 0) return null;
+
+  return prisma.customer.findFirst({
+    where: {
+      companyId: req.companyId,
+      OR: identityFilters,
+    },
+  });
+}
+
 async function getMyPortal(req, res, next) {
   try {
     let customerId = req.query.customerId;
 
     // If customer role logged in, find their associated Customer record
     if (req.user.role === "CUSTOMER" || !customerId) {
-      const customer = await prisma.customer.findFirst({
-        where: {
-          companyId: req.companyId,
-          OR: [
-            { email: req.user.email },
-            { phone: req.user.phone || "" },
-          ],
-        },
-      });
+      const customer = await findCustomerForUser(req);
 
       if (customer) {
         customerId = customer.id;
-      } else {
-        // Fallback to first customer for demo
+      } else if (req.user.role !== "CUSTOMER") {
         const firstCust = await prisma.customer.findFirst({
           where: { companyId: req.companyId },
         });
@@ -44,19 +50,15 @@ async function getMyPortal(req, res, next) {
 
 async function raiseTicket(req, res, next) {
   try {
-    const customer = await prisma.customer.findFirst({
-      where: {
-        companyId: req.companyId,
-        OR: [
-          { email: req.user.email },
-          { phone: req.user.phone || "" },
-        ],
-      },
-    });
+    const customer = await findCustomerForUser(req);
 
-    const customerId = customer ? customer.id : req.body.customerId;
+    const customerId = customer
+      ? customer.id
+      : req.user.role === "CUSTOMER"
+        ? null
+        : req.body.customerId;
     if (!customerId) {
-      return res.status(400).json({ success: false, message: "customerId required." });
+      return res.status(404).json({ success: false, message: "Customer profile not found." });
     }
 
     const ticket = await customerPortalService.customerRaiseTicket(
@@ -79,19 +81,15 @@ async function raiseTicket(req, res, next) {
 
 async function signAcceptance(req, res, next) {
   try {
-    const customer = await prisma.customer.findFirst({
-      where: {
-        companyId: req.companyId,
-        OR: [
-          { email: req.user.email },
-          { phone: req.user.phone || "" },
-        ],
-      },
-    });
+    const customer = await findCustomerForUser(req);
 
-    const customerId = customer ? customer.id : req.body.customerId;
+    const customerId = customer
+      ? customer.id
+      : req.user.role === "CUSTOMER"
+        ? null
+        : req.body.customerId;
     if (!customerId) {
-      return res.status(400).json({ success: false, message: "customerId required." });
+      return res.status(404).json({ success: false, message: "Customer profile not found." });
     }
 
     const signature = await customerPortalService.signJobAcceptance(
@@ -113,8 +111,27 @@ async function signAcceptance(req, res, next) {
   }
 }
 
+async function acceptDelivery(req, res, next) {
+  try {
+    const customer = await findCustomerForUser(req);
+    if (!customer) return res.status(404).json({ success: false, message: "Customer profile not found." });
+    const delivery = await customerPortalService.acceptDelivery(
+      req.companyId,
+      customer.id,
+      req.params.deliveryId,
+      req.body,
+      req.user.id,
+      req
+    );
+    return res.status(200).json({ success: true, message: "Delivery accepted successfully.", data: delivery });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getMyPortal,
   raiseTicket,
   signAcceptance,
+  acceptDelivery,
 };

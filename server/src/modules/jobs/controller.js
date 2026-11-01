@@ -2,7 +2,7 @@ const jobsService = require("./service");
 
 async function listJobs(req, res, next) {
   try {
-    const jobs = await jobsService.getJobs(req.companyId, req.query);
+    const jobs = await jobsService.getJobs(req.companyId, req.query, req.user);
     return res.status(200).json({
       success: true,
       data: jobs,
@@ -14,7 +14,7 @@ async function listJobs(req, res, next) {
 
 async function getJob(req, res, next) {
   try {
-    const job = await jobsService.getJobById(req.companyId, req.params.id);
+    const job = await jobsService.getJobById(req.companyId, req.params.id, req.user);
     return res.status(200).json({
       success: true,
       data: job,
@@ -31,7 +31,8 @@ async function updateJobProgress(req, res, next) {
       req.params.id,
       req.body,
       req.user.id,
-      req
+      req,
+      req.user
     );
     return res.status(200).json({
       success: true,
@@ -52,7 +53,8 @@ async function uploadPhoto(req, res, next) {
       files,
       req.body.caption,
       req.user.id,
-      req
+      req,
+      req.user
     );
     return res.status(201).json({
       success: true,
@@ -73,7 +75,8 @@ async function completeJob(req, res, next) {
       req.body,
       files,
       req.user.id,
-      req
+      req,
+      req.user
     );
 
     return res.status(200).json({
@@ -88,7 +91,7 @@ async function completeJob(req, res, next) {
 
 async function downloadCertificate(req, res, next) {
   try {
-    const buffer = await jobsService.getJobCertificatePdf(req.companyId, req.params.id);
+    const buffer = await jobsService.getJobCertificatePdf(req.companyId, req.params.id, req.user);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename=certificate-${req.params.id}.pdf`);
     return res.send(buffer);

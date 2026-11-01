@@ -25,6 +25,67 @@ async function createPublicLead(req, res, next) {
   }
 }
 
+async function trackPublicInquiry(req, res, next) {
+  try {
+    const rawPhone = (req.query.phone || "").trim();
+    if (!rawPhone) {
+      return res.status(400).json({ success: false, message: "Please provide a valid 10-digit phone number." });
+    }
+    const phoneClean = rawPhone.replace(/\D/g, "").slice(-10);
+    const searchPhone = phoneClean.length >= 10 ? phoneClean : rawPhone;
+
+    const lead = await prisma.lead.findFirst({
+      where: {
+        phone: { contains: searchPhone },
+        archivedAt: null,
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        assignedTo: { select: { name: true, phone: true } },
+        surveys: {
+          select: { id: true, status: true, scheduledAt: true, approvedAt: true, roofType: true, roofAreaSqFt: true },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+        quotes: {
+          select: { id: true, quoteNumber: true, status: true, totalAmount: true, capacityKw: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+    });
+
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        message: `No active solar application found for phone ${rawPhone}. You can submit a new rooftop solar inquiry below!`,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: lead.id,
+        title: lead.title,
+        contactName: lead.contactName,
+        phone: lead.phone,
+        email: lead.email,
+        address: lead.address,
+        stage: lead.stage,
+        desiredCapacityKw: Number(lead.desiredCapacityKw || 3),
+        monthlyBillAmount: Number(lead.monthlyBillAmount || 0),
+        assignedSalesRep: lead.assignedTo?.name || "Rahul Sharma (Sales Lead)",
+        assignedRepPhone: lead.assignedTo?.phone || "+91 (800) 890-SOLAR",
+        latestSurvey: lead.surveys[0] || null,
+        latestQuote: lead.quotes[0] || null,
+        createdAt: lead.createdAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function listLeads(req, res, next) {
   try {
     const leads = await leadsService.getLeads(req.companyId, req.query, req.user);
@@ -207,6 +268,7 @@ async function createCustomerDirect(req, res, next) {
 
 module.exports = {
   createPublicLead,
+  trackPublicInquiry,
   listLeads,
   getKanban,
   getSalesReps,

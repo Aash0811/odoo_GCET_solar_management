@@ -2,7 +2,7 @@ const quotesService = require("./service");
 
 async function listQuotes(req, res, next) {
   try {
-    const quotes = await quotesService.getQuotes(req.companyId, req.query, req.user?.role);
+    const quotes = await quotesService.getQuotes(req.companyId, req.query, req.user);
     return res.status(200).json({
       success: true,
       data: quotes,
@@ -14,7 +14,7 @@ async function listQuotes(req, res, next) {
 
 async function getQuote(req, res, next) {
   try {
-    const quote = await quotesService.getQuoteById(req.companyId, req.params.id, req.user?.role);
+    const quote = await quotesService.getQuoteById(req.companyId, req.params.id, req.user);
     return res.status(200).json({
       success: true,
       data: quote,
@@ -77,7 +77,7 @@ async function approveDiscount(req, res, next) {
 
 async function acceptQuote(req, res, next) {
   try {
-    const quote = await quotesService.acceptQuote(req.companyId, req.params.id, req.body, req);
+    const quote = await quotesService.acceptQuote(req.companyId, req.params.id, req.body, req, req.user);
     return res.status(200).json({
       success: true,
       message: "Quotation accepted online! Digital acceptance record created.",
@@ -103,7 +103,7 @@ async function acceptSharedQuote(req, res, next) {
 
 async function rejectQuote(req, res, next) {
   try {
-    const quote = await quotesService.rejectQuote(req.companyId, req.params.id, req.body, req);
+    const quote = await quotesService.rejectQuote(req.companyId, req.params.id, req.body, req, req.user);
     return res.status(200).json({
       success: true,
       message: "Quotation marked as rejected.",
@@ -142,7 +142,7 @@ async function updateQuoteStatus(req, res, next) {
 
 async function downloadQuotePdf(req, res, next) {
   try {
-    const buffer = await quotesService.getQuotePdfBuffer(req.companyId, req.params.id);
+    const buffer = await quotesService.getQuotePdfBuffer(req.companyId, req.params.id, req.user);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename=quote-${req.params.id}.pdf`);
     return res.send(buffer);
@@ -170,7 +170,7 @@ async function uploadQuotePhoto(req, res, next) {
 
 async function listQuotePhotos(req, res, next) {
   try {
-    const photos = await quotesService.getQuotePhotos(req.companyId, req.params.id);
+    const photos = await quotesService.getQuotePhotos(req.companyId, req.params.id, req.user);
     return res.status(200).json({ success: true, data: photos });
   } catch (error) {
     next(error);

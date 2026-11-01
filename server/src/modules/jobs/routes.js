@@ -31,7 +31,7 @@ router.post(
   "/:id/complete",
   requireRole("ADMIN", "TECHNICIAN"),
   upload.fields([
-    { name: "photos", maxCount: 5 },
+    { name: "photos", maxCount: 12 },
     { name: "signature", maxCount: 1 },
   ]),
   jobsController.completeJob

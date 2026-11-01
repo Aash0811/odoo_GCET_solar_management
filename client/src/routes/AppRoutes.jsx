@@ -14,6 +14,7 @@ import LeadBoardPage from '../pages/sales/LeadBoardPage';
 import QuoteBuilderPage from '../pages/sales/QuoteBuilderPage';
 import OrderPaymentsPage from '../pages/sales/OrderPaymentsPage';
 import PickListDispatchPage from '../pages/warehouse/PickListDispatchPage';
+import DeliveryAgentPage from '../pages/delivery/DeliveryAgentPage';
 import InventoryPage from '../pages/warehouse/InventoryPage';
 import SerialScannerPage from '../pages/warehouse/SerialScannerPage';
 import TechnicianJobsPage from '../pages/technician/TechnicianJobsPage';
@@ -40,6 +41,7 @@ function RootRedirect() {
   if (role === 'CUSTOMER') return <Navigate to="/customer-portal" replace />;
   if (role === 'TECHNICIAN') return <Navigate to="/technician/jobs" replace />;
   if (role === 'WAREHOUSE') return <Navigate to="/warehouse/dispatch" replace />;
+  if (role === 'DELIVERY_AGENT') return <Navigate to="/delivery/assigned" replace />;
   if (role === 'SUPPORT') return <Navigate to="/support/tickets" replace />;
   if (role === 'SALESMAN') return <Navigate to="/sales/leads" replace />;
   return <Navigate to="/admin/dashboard" replace />;
@@ -80,8 +82,8 @@ export default function AppRoutes() {
             <Route path="/admin/packages" element={<SolarPackageConfiguratorPage />} />
           </Route>
 
-          {/* Sales Quotation Studio (Salesman only) */}
-          <Route element={<ProtectedRoute allowedRoles={['SALESMAN']} />}>
+          {/* Sales Quotation Studio (Admin and Salesman) */}
+          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SALESMAN']} />}>
             <Route path="/sales/quotes" element={<QuoteBuilderPage />} />
           </Route>
 
@@ -95,8 +97,8 @@ export default function AppRoutes() {
             <Route path="/sales/orders" element={<OrderPaymentsPage />} />
           </Route>
 
-          {/* Site Survey Operations (Admin, Salesman, Technician) */}
-          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'SALESMAN', 'TECHNICIAN']} />}>
+          {/* Site Survey Operations (Admin, Technician) */}
+          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'TECHNICIAN']} />}>
             <Route path="/operations/surveys" element={<SurveysPage />} />
           </Route>
 
@@ -105,6 +107,10 @@ export default function AppRoutes() {
             <Route path="/warehouse/dispatch" element={<PickListDispatchPage />} />
             <Route path="/warehouse/inventory" element={<InventoryPage />} />
             <Route path="/warehouse/scanner" element={<SerialScannerPage />} />
+          </Route>
+
+          <Route element={<ProtectedRoute allowedRoles={['ADMIN', 'DELIVERY_AGENT']} />}>
+            <Route path="/delivery/assigned" element={<DeliveryAgentPage />} />
           </Route>
 
           {/* Technician routes */}

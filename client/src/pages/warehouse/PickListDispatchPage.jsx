@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { dispatchApi, warehousesApi, inventoryApi } from '../../api';
+import { dispatchApi, warehousesApi, inventoryApi, usersApi } from '../../api';
 import { useAuth } from '../../hooks/useAuth';
 import { Html5Qrcode } from 'html5-qrcode';
 import {
@@ -51,6 +51,7 @@ export default function PickListDispatchPage({ defaultTab = 'dispatch' }) {
 
   // Warehouses
   const [warehouses, setWarehouses] = useState([]);
+  const [deliveryAgents, setDeliveryAgents] = useState([]);
 
   // Scanning States
   const [scannedSerialInput, setScannedSerialInput] = useState('');
@@ -69,15 +70,17 @@ export default function PickListDispatchPage({ defaultTab = 'dispatch' }) {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [plRes, whRes] = await Promise.all([
+      const [plRes, whRes, agentsRes] = await Promise.all([
         dispatchApi.listPickLists(),
         warehousesApi.list().catch(() => ({ data: { data: [] } })),
+        usersApi.list({ role: 'DELIVERY_AGENT', isActive: true }).catch(() => ({ data: { data: [] } })),
       ]);
       const plData = plRes.data?.data || [];
       const whData = whRes.data?.data || [];
 
       setPickLists(plData);
       setWarehouses(whData);
+      setDeliveryAgents(agentsRes.data?.data || []);
 
       if (plData.length > 0) {
         loadDetail(plData[0].id);
@@ -558,6 +561,22 @@ export default function PickListDispatchPage({ defaultTab = 'dispatch' }) {
                       <option key={wh.id} value={wh.id}>
                         {wh.name} ({wh.city} - {wh.zone})
                       </option>
+                    ))}
+                  </select>
+                  <label className="text-[10px] font-black uppercase text-[#714B67] mt-2">Delivery Agent</label>
+                  <select
+                    value={selectedPickList.deliveryAgentId || ''}
+                    onChange={async (e) => {
+                      if (!e.target.value) return;
+                      await dispatchApi.assignDeliveryAgent(selectedPickList.id, e.target.value);
+                      loadDetail(selectedPickList.id);
+                    }}
+                    disabled={selectedPickList.status === 'COMPLETED'}
+                    className="text-xs font-bold px-3 py-1.5 rounded-xl border border-[#714B67]/30 bg-[#FAF6F9] text-[#241621] outline-none"
+                  >
+                    <option value="">-- Assign agent --</option>
+                    {deliveryAgents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>{agent.name}</option>
                     ))}
                   </select>
                 </div>

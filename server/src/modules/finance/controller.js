@@ -14,7 +14,7 @@ async function getJobCosting(req, res, next) {
 
 async function getSubsidyTracker(req, res, next) {
   try {
-    const subsidies = await financeService.getSubsidyTracker(req.companyId);
+    const subsidies = await financeService.getSubsidyTracker(req.companyId, req.user);
     return res.status(200).json({
       success: true,
       data: subsidies,
@@ -57,7 +57,7 @@ async function getTechnicianPayoutSummary(req, res, next) {
 
 async function listInvoices(req, res, next) {
   try {
-    const invoices = await financeService.getInvoices(req.companyId, req.query);
+    const invoices = await financeService.getInvoices(req.companyId, req.query, req.user);
     return res.status(200).json({
       success: true,
       data: invoices,
@@ -69,10 +69,29 @@ async function listInvoices(req, res, next) {
 
 async function downloadInvoicePdf(req, res, next) {
   try {
-    const buffer = await financeService.getInvoicePdfBuffer(req.companyId, req.params.id);
+    const buffer = await financeService.getInvoicePdfBuffer(req.companyId, req.params.id, req.user);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename=invoice-${req.params.id}.pdf`);
     return res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function recordInvoicePayment(req, res, next) {
+  try {
+    const invoice = await financeService.recordInvoicePayment(
+      req.companyId,
+      req.params.id,
+      req.body,
+      req.user,
+      req
+    );
+    return res.status(200).json({
+      success: true,
+      message: invoice.status === "PAID" ? "Invoice paid successfully." : "Invoice payment recorded.",
+      data: invoice,
+    });
   } catch (error) {
     next(error);
   }
@@ -98,5 +117,6 @@ module.exports = {
   getTechnicianPayoutSummary,
   listInvoices,
   downloadInvoicePdf,
+  recordInvoicePayment,
   addCostEntry,
 };

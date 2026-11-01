@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { customerPortalApi, ordersApi } from '../../api';
 import {
   Truck,
@@ -32,6 +33,7 @@ const ORDER_STAGES = [
 ];
 
 export default function OrderTrackingPage() {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -75,7 +77,9 @@ export default function OrderTrackingPage() {
 
   const handleOpenCustomerPay = (order, targetAmount) => {
     const total = Number(order.totalAmount || 0);
-    const paid = (order.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+    const paid = (order.payments || [])
+      .filter((p) => p.status === 'COMPLETED' && p.isVerified !== false)
+      .reduce((s, p) => s + Number(p.amount || 0), 0);
     const balance = Math.max(0, total - paid);
     const defaultAmount = targetAmount || (paid === 0 ? Math.round(total * 0.3) : balance);
 
@@ -84,7 +88,7 @@ export default function OrderTrackingPage() {
       amount: defaultAmount.toString(),
       method: 'DUMMY',
       transactionRef: `DUMMY-CUST-${Date.now().toString().slice(-6)}`,
-      notes: 'Customer Portal Instant Dummy Payment',
+      notes: 'Customer Portal Payment Submission',
     });
     setPayModalOpen(true);
   };
@@ -102,7 +106,7 @@ export default function OrderTrackingPage() {
       });
 
       setPaySuccessMessage(
-        res.data?.message || 'Payment confirmed successfully via Dummy Payment Gateway!'
+        res.data?.message || 'Payment submitted for accountant verification.'
       );
       setPayModalOpen(false);
       setTimeout(() => setPaySuccessMessage(''), 6000);
@@ -223,7 +227,9 @@ export default function OrderTrackingPage() {
           {/* Active Order Stepper & Details - Right 8 cols */}
           {selectedOrder && (() => {
             const orderTotal = Number(selectedOrder.totalAmount || 0);
-            const orderPaid = (selectedOrder.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+            const orderPaid = (selectedOrder.payments || [])
+              .filter((p) => p.status === 'COMPLETED' && p.isVerified !== false)
+              .reduce((s, p) => s + Number(p.amount || 0), 0);
             const orderBalance = Math.max(0, orderTotal - orderPaid);
             const minAdvance = Number(selectedOrder.minAdvanceAmount || Math.round(orderTotal * 0.3));
             const isAdvanceMet = orderPaid >= minAdvance;
@@ -269,7 +275,7 @@ export default function OrderTrackingPage() {
                       </div>
                       <p className="text-[11px] text-slate-500 mt-0.5">
                         {isAdvanceMet
-                          ? `Total collected: ₹${orderPaid.toLocaleString('en-IN')} (${Math.round((orderPaid / (orderTotal || 1)) * 100)}%). Clear remaining milestones via our instant dummy test gateway.`
+                          ? `Verified collected: ₹${orderPaid.toLocaleString('en-IN')} (${Math.round((orderPaid / (orderTotal || 1)) * 100)}%). Submit the remaining balance for accountant verification.`
                           : `Minimum 30% advance (₹${minAdvance.toLocaleString('en-IN')}) is required to release warehouse picking, hardware packing, and installation schedule.`}
                       </p>
                     </div>
@@ -320,6 +326,76 @@ export default function OrderTrackingPage() {
                   })}
                 </div>
               </div>
+
+              {selectedOrder.deliveries?.length > 0 && (
+                <div className="p-4 rounded-2xl bg-white border border-[#EBDCE7] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-black text-[#714B67] uppercase tracking-wider flex items-center gap-1.5">
+                      <PackageCheck className="w-4 h-4" /> Delivery timeline
+                    </h3>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#F5EDF3] text-[#714B67] font-black">
+                      {selectedOrder.deliveries[0].status.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    {[
+                      ['ASSIGNED', 'Assigned', selectedOrder.deliveries[0].createdAt],
+                      ['IN_TRANSIT', 'In transit', selectedOrder.deliveries[0].deliveryDate],
+                      ['ARRIVED', 'Arrived', selectedOrder.deliveries[0].validatedAt],
+                      ['DELIVERED', 'Delivered', selectedOrder.deliveries[0].deliveredAt],
+                    ].map(([status, label, timestamp]) => {
+                      const statusOrder = ['ASSIGNED', 'IN_TRANSIT', 'ARRIVED', 'DELIVERED'];
+                      const currentIndex = statusOrder.indexOf(selectedOrder.deliveries[0].status);
+                      const complete = statusOrder.indexOf(status) <= currentIndex;
+                      return (
+                        <div key={status} className="space-y-1">
+                          <div className={`mx-auto w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black ${
+                            complete ? 'bg-[#714B67] text-white' : 'bg-slate-100 text-slate-400'
+                          }`}>
+                            {complete ? '✓' : '•'}
+                          </div>
+                          <p className={`text-[10px] font-bold ${complete ? 'text-[#241621]' : 'text-slate-400'}`}>{label}</p>
+                          {timestamp && (
+                            <p className="text-[9px] text-slate-400">
+                              {new Date(timestamp).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="grid sm:grid-cols-3 gap-3 text-xs pt-2 border-t border-[#EBDCE7]/70">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-semibold">Delivery address</span>
+                      <span className="font-bold text-slate-700">{selectedOrder.deliveries[0].deliveryAddress || 'Pending confirmation'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-semibold">Recipient</span>
+                      <span className="font-bold text-slate-700">{selectedOrder.deliveries[0].deliveredTo || 'Pending'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-semibold">Customer acceptance</span>
+                      <span className={`font-bold ${selectedOrder.deliveries[0].customerAccepted ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        {selectedOrder.deliveries[0].customerAccepted ? 'Accepted' : 'Awaiting signature'}
+                      </span>
+                    </div>
+                    {selectedOrder.deliveries[0].status === 'DELIVERED' && !selectedOrder.deliveries[0].customerAccepted && (
+                      <button
+                        type="button"
+                        onClick={() => navigate('/customer/acceptance')}
+                        className="w-full rounded-xl bg-[#714B67] text-white py-2.5 text-xs font-black hover:bg-[#5e3d55] transition"
+                      >
+                        Review and sign delivery acceptance
+                      </button>
+                    )}
+                    {selectedOrder.deliveries[0].customerAccepted && (
+                      <div className="text-xs font-bold text-emerald-700 bg-emerald-50 rounded-xl px-3 py-2">
+                        Delivery acceptance completed on {new Date(selectedOrder.deliveries[0].customerAcceptedAt).toLocaleDateString()}.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Technician Crew & Installation Schedule */}
               {selectedOrder.installationJobs && selectedOrder.installationJobs.length > 0 && (
@@ -444,7 +520,7 @@ export default function OrderTrackingPage() {
                   <CreditCard className="w-5 h-5 text-[#f09e38]" />
                 </span>
                 <div>
-                  <h3 className="text-base font-black text-[#241621]">⚡ Instant Solar Payment Gateway</h3>
+                  <h3 className="text-base font-black text-[#241621]">⚡ Solar Payment Submission</h3>
                   <span className="text-[10px] text-slate-500 font-semibold">
                     {payingOrder.orderNumber} • Sandbox Dummy Simulation
                   </span>
@@ -459,7 +535,7 @@ export default function OrderTrackingPage() {
             </div>
 
             <p className="text-xs text-slate-600 mb-3 leading-relaxed">
-              <strong>Safe Dummy Payment:</strong> Test and verify your order without bank deductions. Submitting confirms the transaction, updates milestone status, and produces an instant verifiable PDF receipt.
+              <strong>Safe Dummy Payment:</strong> Test your order payment without bank deductions. Submission creates a pending payment for accountant verification; milestones and order release update after approval.
             </p>
 
             <form onSubmit={handleCustomerSubmitPay} className="space-y-3.5">
@@ -529,7 +605,7 @@ export default function OrderTrackingPage() {
 
               <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px] font-bold flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Instant Confirmation: Triggers order release &amp; creates valid download receipt.</span>
+                <span>Accountant verification: Triggers order release and makes the payment eligible for receipt download.</span>
               </div>
 
               <div className="flex gap-2 pt-1">
@@ -561,4 +637,3 @@ export default function OrderTrackingPage() {
     </div>
   );
 }
-

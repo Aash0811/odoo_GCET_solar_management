@@ -2,7 +2,7 @@ const dispatchService = require("./service");
 
 async function listPickLists(req, res, next) {
   try {
-    const pickLists = await dispatchService.getPickLists(req.companyId, req.query);
+    const pickLists = await dispatchService.getPickLists(req.companyId, req.query, req.user);
     return res.status(200).json({
       success: true,
       data: pickLists,
@@ -14,7 +14,7 @@ async function listPickLists(req, res, next) {
 
 async function getPickList(req, res, next) {
   try {
-    const pickList = await dispatchService.getPickListById(req.companyId, req.params.id);
+    const pickList = await dispatchService.getPickListById(req.companyId, req.params.id, req.user);
     return res.status(200).json({
       success: true,
       data: pickList,
@@ -66,6 +66,23 @@ async function validateDelivery(req, res, next) {
         missing: error.missing,
       });
     }
+
+    next(error);
+  }
+}
+
+async function updateDeliveryStatus(req, res, next) {
+  try {
+    const delivery = await dispatchService.updateDeliveryStatus(
+      req.companyId,
+      req.params.orderId,
+      req.body.status,
+      req.body,
+      req.user.id,
+      req
+    );
+    return res.status(200).json({ success: true, data: delivery });
+  } catch (error) {
     next(error);
   }
 }
@@ -108,6 +125,21 @@ async function assignWarehouse(req, res, next) {
       message: `Assigned warehouse '${updatedPickList.warehouse?.name}' (${updatedPickList.warehouse?.city} - ${updatedPickList.warehouse?.zone}) to pick list ${updatedPickList.pickNumber}.`,
       data: updatedPickList,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function assignDeliveryAgent(req, res, next) {
+  try {
+    const result = await dispatchService.assignDeliveryAgent(
+      req.companyId,
+      req.params.id,
+      req.body.deliveryAgentId,
+      req.user.id,
+      req
+    );
+    return res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
@@ -171,7 +203,9 @@ module.exports = {
   scanSerial,
   pickItem,
   assignWarehouse,
+  assignDeliveryAgent,
   validateDelivery,
+  updateDeliveryStatus,
   lookupBarcode,
   getItemBarcodes,
   seedUniqueCodes,

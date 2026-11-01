@@ -1,4 +1,5 @@
 const inventoryService = require("./service");
+const prisma = require("../../config/prisma");
 
 async function listProducts(req, res, next) {
   try {
@@ -28,6 +29,22 @@ async function getProduct(req, res, next) {
 async function listPackageTemplates(req, res, next) {
   try {
     const templates = await inventoryService.getPackageTemplates(req.companyId, req.user?.role);
+    return res.status(200).json({
+      success: true,
+      data: templates,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function listPublicPackages(req, res, next) {
+  try {
+    const company = await prisma.company.findFirst({ where: { isActive: true } });
+    if (!company) {
+      return res.status(404).json({ success: false, message: "Company not found." });
+    }
+    const templates = await inventoryService.getPackageTemplates(company.id, "CUSTOMER");
     return res.status(200).json({
       success: true,
       data: templates,
@@ -162,6 +179,7 @@ module.exports = {
   getPackageTemplate,
   createPackageTemplate,
   updatePackageTemplate,
+  listPublicPackages,
   getCapacitySettings,
   updateCapacitySettings,
 };

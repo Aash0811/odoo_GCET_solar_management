@@ -7,6 +7,7 @@ const VALID_ROLES = [
   "SALESMAN",
   "ACCOUNTANT",
   "WAREHOUSE",
+  "DELIVERY_AGENT",
   "TECHNICIAN",
   "SUPPORT",
   "CUSTOMER",
@@ -670,4 +671,3 @@ module.exports = {
   changeUserRole,
   deleteUser,
 };
-

@@ -1,7 +1,7 @@
 const prisma = require("../../config/prisma");
 const { recordAuditLog } = require("../../utils/audit");
 
-async function searchWarranties(companyId, query, pagination = {}) {
+async function searchWarranties(companyId, query, pagination = {}, user = null) {
   const q = query ? query.trim() : "";
   const page = Math.max(1, Number(pagination.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(pagination.limit) || 20));
@@ -9,6 +9,18 @@ async function searchWarranties(companyId, query, pagination = {}) {
 
   const where = {
     companyId,
+    ...(user?.role === "CUSTOMER"
+      ? {
+          customer: user.email || user.phone
+            ? {
+                OR: [
+                  ...(user.email ? [{ email: user.email }] : []),
+                  ...(user.phone ? [{ phone: user.phone }] : []),
+                ],
+              }
+            : { id: "__no_customer_access__" },
+        }
+      : {}),
     ...(q
       ? {
           OR: [

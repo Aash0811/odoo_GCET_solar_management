@@ -461,7 +461,7 @@ export default function OrderPaymentsPage() {
                 {order.payments && order.payments.length > 0 && (
                   <div className="space-y-2 pt-2 border-t border-[#EBDCE7]">
                     <h3 className="text-xs font-black text-[#241621] uppercase tracking-wider flex items-center gap-1.5">
-                      <Receipt className="w-3.5 h-3.5 text-[#714B67]" /> Verified Payment Ledger & Official Receipts
+                      <Receipt className="w-3.5 h-3.5 text-[#714B67]" /> Payment Ledger & Official Receipts
                     </h3>
 
                     <div className="overflow-x-auto rounded-2xl border border-[#EBDCE7]">
@@ -498,8 +498,14 @@ export default function OrderPaymentsPage() {
                                 ₹{Number(p.amount).toLocaleString('en-IN')}
                               </td>
                               <td className="py-2 px-3 text-center">
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center justify-center gap-1 w-max mx-auto">
-                                  <Check className="w-3 h-3 text-emerald-600" /> Verified
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center justify-center gap-1 w-max mx-auto ${
+                                  p.status === 'COMPLETED' && p.isVerified !== false
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {p.status === 'COMPLETED' && p.isVerified !== false
+                                    ? <><Check className="w-3 h-3 text-emerald-600" /> Verified</>
+                                    : 'Pending verification'}
                                 </span>
                               </td>
                               <td className="py-2 px-3 text-right">
@@ -661,7 +667,7 @@ export default function OrderPaymentsPage() {
                 <div className="p-3 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-900 text-[11px] font-bold flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
                   <span>
-                    <strong>Dummy Sandbox Active:</strong> Simulates instant payment without real bank debit. Auto-confirms order and issues verifiable PDF receipt.
+                    <strong>Dummy Sandbox Active:</strong> Simulates payment without real bank debit. Accountant verification is still required before the order is released.
                   </span>
                 </div>
               )}

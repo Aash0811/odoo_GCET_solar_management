@@ -19,6 +19,7 @@ router.post(
   validate(createLeadSchema.partial({ title: true })),
   leadsController.createPublicLead
 );
+router.get("/public/track", leadsController.trackPublicInquiry);
 
 router.use(authenticate);
 router.use(companyScope);

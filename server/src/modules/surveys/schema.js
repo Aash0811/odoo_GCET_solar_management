@@ -4,7 +4,7 @@ const scheduleSurveySchema = z.object({
   leadId: z.string().optional().nullable(),
   surveyId: z.string().optional().nullable(),
   scheduledAt: z.string().or(z.date()).transform((val) => new Date(val)),
-  surveyedById: z.string().optional().nullable(),
+  surveyedById: z.string().min(1, "Technician assignment is required. The Admin must select a qualified technician."),
   notes: z.string().optional().nullable(),
 });
 

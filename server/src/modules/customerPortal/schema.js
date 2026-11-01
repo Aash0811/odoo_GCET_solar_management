@@ -18,8 +18,15 @@ const signAcceptanceSchema = z.object({
   acceptanceText: z.string().optional().nullable(),
 });
 
+const acceptDeliverySchema = z.object({
+  signedByName: z.string().min(2, "Name is required"),
+  signatureImage: z.string().min(10, "Signature image is required"),
+  acceptanceText: z.string().optional().nullable(),
+});
+
 module.exports = {
   customerLoginSchema,
   raiseTicketSchema,
   signAcceptanceSchema,
+  acceptDeliverySchema,
 };

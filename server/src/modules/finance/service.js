@@ -79,9 +79,22 @@ async function getJobCosting(companyId, filters = {}) {
 
 // Business Rule 10:
 // Subsidy tracker per customer (docs submitted, status, expected/received amount).
-async function getSubsidyTracker(companyId) {
+async function getSubsidyTracker(companyId, user = null) {
+  const customerScope = user?.role === "CUSTOMER"
+    ? {
+        customer: user.email || user.phone
+          ? {
+              OR: [
+                ...(user.email ? [{ email: user.email }] : []),
+                ...(user.phone ? [{ phone: user.phone }] : []),
+              ],
+            }
+          : { id: "__no_customer_access__" },
+      }
+    : {};
+
   return await prisma.subsidyApplication.findMany({
-    where: { companyId },
+    where: { companyId, ...customerScope },
     include: {
       customer: { select: { id: true, name: true, phone: true, email: true, city: true } },
     },
@@ -175,9 +188,19 @@ async function getTechnicianPayoutSummary(companyId) {
   return Object.values(summaryByTech);
 }
 
-async function getInvoices(companyId, filters = {}) {
+function customerInvoiceScope(user) {
+  if (!user || user.role !== "CUSTOMER") return {};
+  const identity = [];
+  if (user.email) identity.push({ email: user.email });
+  if (user.phone) identity.push({ phone: user.phone });
+  return {
+    customer: identity.length ? { OR: identity } : { id: "__no_customer_access__" },
+  };
+}
+
+async function getInvoices(companyId, filters = {}, user = null) {
   const { status, customerId } = filters;
-  const where = { companyId };
+  const where = { companyId, ...customerInvoiceScope(user) };
   if (status) where.status = status;
   if (customerId) where.customerId = customerId;
 
@@ -193,9 +216,9 @@ async function getInvoices(companyId, filters = {}) {
   });
 }
 
-async function getInvoicePdfBuffer(companyId, id) {
+async function getInvoicePdfBuffer(companyId, id, user = null) {
   const invoice = await prisma.invoice.findFirst({
-    where: { id, companyId },
+    where: { id, companyId, ...customerInvoiceScope(user) },
     include: { customer: true, lines: true },
   });
 
@@ -207,6 +230,56 @@ async function getInvoicePdfBuffer(companyId, id) {
 
   const company = await prisma.company.findUnique({ where: { id: companyId } });
   return await generateInvoicePdf(invoice, company);
+}
+
+async function recordInvoicePayment(companyId, id, data, user, req = null) {
+  const invoice = await prisma.invoice.findFirst({
+    where: { id, companyId, ...customerInvoiceScope(user) },
+  });
+
+  if (!invoice) {
+    const error = new Error("Invoice not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const amount = Number(data.amount);
+  const outstanding = Math.max(0, Number(invoice.totalAmount) - Number(invoice.amountPaid));
+  if (amount > outstanding) {
+    const error = new Error(`Payment exceeds the outstanding invoice balance of INR ${outstanding.toLocaleString("en-IN")}.`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const amountPaid = Number(invoice.amountPaid) + amount;
+  const status = amountPaid >= Number(invoice.totalAmount) ? "PAID" : "PARTIALLY_PAID";
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.invoice.update({
+      where: { id },
+      data: {
+        amountPaid,
+        amountDue: Math.max(0, Number(invoice.totalAmount) - amountPaid),
+        status,
+        paidAt: status === "PAID" ? new Date() : null,
+        notes: `${invoice.notes || ""}\nPayment ${data.method}${data.reference ? ` (${data.reference})` : ""}: INR ${amount.toFixed(2)}`.trim(),
+      },
+      include: { customer: true, lines: true },
+    });
+
+    await recordAuditLog({
+      companyId,
+      actorId: user?.id,
+      action: "PAYMENT_RECORDED",
+      entityType: "Invoice",
+      entityId: id,
+      newValue: { amount, status, method: data.method, reference: data.reference || null },
+      req,
+    }, tx);
+
+    return result;
+  });
+
+  return updated;
 }
 
 async function addCostEntry(companyId, data, actorId, req = null) {
@@ -245,5 +318,6 @@ module.exports = {
   getTechnicianPayoutSummary,
   getInvoices,
   getInvoicePdfBuffer,
+  recordInvoicePayment,
   addCostEntry,
 };

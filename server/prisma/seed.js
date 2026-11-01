@@ -82,6 +82,16 @@ async function main() {
     prisma.user.create({
       data: {
         companyId: company.id,
+        name: "Anil Mehta (Accountant)",
+        email: "accountant@sunpower.com",
+        phone: "+91 98000 00006",
+        passwordHash,
+        role: "ACCOUNTANT",
+      },
+    }),
+    prisma.user.create({
+      data: {
+        companyId: company.id,
         name: "Kiran Patel (Warehouse Head)",
         email: "warehouse@sunpower.com",
         phone: "+91 98000 00003",
@@ -97,6 +107,16 @@ async function main() {
         phone: "+91 98000 00004",
         passwordHash,
         role: "TECHNICIAN",
+      },
+    }),
+    prisma.user.create({
+      data: {
+        companyId: company.id,
+        name: "Arjun Rao (Delivery Agent)",
+        email: "delivery@sunpower.com",
+        phone: "+91 98000 00007",
+        passwordHash,
+        role: "DELIVERY_AGENT",
       },
     }),
     prisma.user.create({
@@ -119,10 +139,20 @@ async function main() {
         role: "CUSTOMER",
       },
     }),
+    prisma.user.create({
+      data: {
+        companyId: company.id,
+        name: "Sita Devi (Customer)",
+        email: "sita@sunpower.com",
+        phone: "9000000002",
+        passwordHash,
+        role: "CUSTOMER",
+      },
+    }),
   ]);
 
-  const [adminUser, salesUser, warehouseUser, techUser, supportUser, customerUser] = users;
-  console.log("Created 6 users (ADMIN, SALESMAN, WAREHOUSE, TECHNICIAN, SUPPORT, CUSTOMER).");
+  const [adminUser, salesUser, accountantUser, warehouseUser, techUser, supportUser, customerUser, sitaUser] = users;
+  console.log("Created 8 users covering all seven roles and two customer personas.");
 
   // 3. Create 20 Products
   const productsData = [
@@ -263,23 +293,23 @@ async function main() {
   const customer1 = await prisma.customer.create({
     data: {
       companyId: company.id,
-      name: "Ramesh Sharma",
-      email: "ramesh.sharma@example.com",
-      phone: "9876543210",
-      address: "House 12, Jubilee Hills, Hyderabad",
+      name: "Ravi Kumar",
+      email: "customer@sunpower.com",
+      phone: "9000000001",
+      address: "Plot 12, Madhapur, Hyderabad",
       city: "Hyderabad",
       state: "Telangana",
-      postalCode: "500033",
+      postalCode: "500081",
     },
   });
 
   const customer2 = await prisma.customer.create({
     data: {
       companyId: company.id,
-      name: "Ananya Deshmukh",
-      email: "ananya.d@example.com",
-      phone: "9812345678",
-      address: "Flat 401, Lotus Towers, Gachibowli, Hyderabad",
+      name: "Sita Devi",
+      email: "sita@sunpower.com",
+      phone: "9000000002",
+      address: "Kukatpally, Hyderabad",
       city: "Hyderabad",
       state: "Telangana",
       postalCode: "500032",
@@ -772,6 +802,7 @@ async function main() {
   console.log("  - SALESMAN:   sales@sunpower.com");
   console.log("  - WAREHOUSE:  warehouse@sunpower.com");
   console.log("  - TECHNICIAN: tech@sunpower.com");
+  console.log("  - DELIVERY_AGENT: delivery@sunpower.com");
   console.log("  - SUPPORT:    support@sunpower.com");
   console.log("  - CUSTOMER:   customer@sunpower.com (or phone: 9876543210)");
   console.log("-------------------------------------------------------------------");

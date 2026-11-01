@@ -13,6 +13,7 @@ export const leadsApi = {
   get: (id) => apiClient.get(`/leads/${id}`),
   create: (data) => apiClient.post('/leads', data),
   submitPublicInquiry: (data) => apiClient.post('/leads/public', data),
+  trackPublicInquiry: (phone) => apiClient.get('/leads/public/track', { params: { phone } }),
   createCustomerAccount: (id, data) => apiClient.post(`/leads/${id}/create-customer`, data),
   createCustomerDirect: (data) => apiClient.post('/leads/customer-direct', data),
   updateChecklist: (id, data) => apiClient.patch(`/leads/${id}/checklist`, data),
@@ -43,6 +44,7 @@ export const inventoryApi = {
   createProduct: (data) => apiClient.post('/inventory/products', data),
   updateProduct: (id, data) => apiClient.patch(`/inventory/products/${id}`, data),
   getTemplates: () => apiClient.get('/inventory/templates'),
+  getPublicPackages: () => apiClient.get('/inventory/public/packages'),
   getTemplate: (id) => apiClient.get(`/inventory/templates/${id}`),
   createTemplate: (data) => apiClient.post('/inventory/templates', data),
   updateTemplate: (id, data) => apiClient.patch(`/inventory/templates/${id}`, data),
@@ -101,6 +103,18 @@ export const dispatchApi = {
   getItemBarcodes: (params) => apiClient.get('/dispatch/item-barcodes', { params }),
   seedUniqueCodes: (data) => apiClient.post('/dispatch/seed-unique-codes', data),
   registerSerial: (data) => apiClient.post('/dispatch/register-serial', data),
+  assignDeliveryAgent: (id, deliveryAgentId) =>
+    apiClient.patch(`/dispatch/pick-lists/${id}/delivery-agent`, { deliveryAgentId }),
+};
+
+export const deliveryAgentApi = {
+  list: (params) => apiClient.get('/dispatch/pick-lists', { params }),
+  get: (id) => apiClient.get(`/dispatch/pick-lists/${id}`),
+  lookupBarcode: (code) => apiClient.get('/dispatch/lookup-barcode', { params: { code } }),
+  confirmDelivery: (orderId, data) =>
+    apiClient.post(`/dispatch/orders/${orderId}/validate-delivery`, data),
+  updateStatus: (orderId, data) =>
+    apiClient.patch(`/dispatch/orders/${orderId}/delivery-status`, data),
 };
 
 export const warehousesApi = {
@@ -123,6 +137,7 @@ export const warehousesApi = {
 export const jobsApi = {
   list: (params) => apiClient.get('/jobs', { params }),
   get: (id) => apiClient.get(`/jobs/${id}`),
+  getTechnicians: () => apiClient.get('/surveys/technicians'),
   updateProgress: (id, data) => apiClient.patch(`/jobs/${id}/progress`, data),
   uploadPhoto: (id, formData) =>
     apiClient.post(`/jobs/${id}/photos`, formData, {
@@ -136,6 +151,10 @@ export const jobsApi = {
     const token = localStorage.getItem('sunpower_token');
     return `${apiClient.defaults.baseURL}/jobs/${id}/certificate${token ? `?token=${encodeURIComponent(token)}` : ''}`;
   },
+};
+
+export const technicianVerificationApi = {
+  lookupBarcode: (code) => apiClient.get('/dispatch/lookup-barcode', { params: { code } }),
 };
 
 export const warrantyApi = {
@@ -159,6 +178,7 @@ export const financeApi = {
   updateSubsidy: (id, data) => apiClient.patch(`/finance/subsidies/${id}`, data),
   getPayouts: () => apiClient.get('/finance/payouts'),
   getInvoices: (params) => apiClient.get('/finance/invoices', { params }),
+  payInvoice: (id, data) => apiClient.post(`/finance/invoices/${id}/payments`, data),
   addCostEntry: (data) => apiClient.post('/finance/cost-entries', data),
   downloadInvoiceUrl: (id) => {
     const token = localStorage.getItem('sunpower_token');
@@ -181,6 +201,7 @@ export const customerPortalApi = {
   getMe: (customerId) => apiClient.get('/customer-portal/me', { params: { customerId } }),
   raiseTicket: (data) => apiClient.post('/customer-portal/tickets', data),
   signJob: (jobId, data) => apiClient.post(`/customer-portal/jobs/${jobId}/sign`, data),
+  acceptDelivery: (deliveryId, data) => apiClient.post(`/customer-portal/deliveries/${deliveryId}/accept`, data),
   requestQuote: (data) => apiClient.post('/leads/public', data),
 };
 

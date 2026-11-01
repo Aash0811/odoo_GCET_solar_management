@@ -26,7 +26,14 @@ const updateSubsidySchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
+const recordInvoicePaymentSchema = z.object({
+  amount: z.coerce.number().positive("Payment amount must be positive"),
+  method: z.enum(["CASH", "UPI", "BANK_TRANSFER", "CARD", "CHEQUE", "OTHER", "DUMMY"]),
+  reference: z.string().optional().nullable(),
+});
+
 module.exports = {
   createCostEntrySchema,
   updateSubsidySchema,
+  recordInvoicePaymentSchema,
 };

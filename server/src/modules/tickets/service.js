@@ -2,9 +2,19 @@ const prisma = require("../../config/prisma");
 const { recordAuditLog } = require("../../utils/audit");
 const { createNotification } = require("../../utils/notify");
 
-async function getTickets(companyId, filters = {}) {
+function customerIdentityScope(user) {
+  if (!user || user.role !== "CUSTOMER") return {};
+  const identity = [];
+  if (user.email) identity.push({ email: user.email });
+  if (user.phone) identity.push({ phone: user.phone });
+  return {
+    customer: identity.length > 0 ? { OR: identity } : { id: "__no_customer_access__" },
+  };
+}
+
+async function getTickets(companyId, filters = {}, user = null) {
   const { status, priority, assignedToId, customerId } = filters;
-  const where = { companyId };
+  const where = { companyId, ...customerIdentityScope(user) };
 
   if (status) where.status = status;
   if (priority) where.priority = priority;
@@ -36,9 +46,9 @@ async function getTickets(companyId, filters = {}) {
   });
 }
 
-async function getTicketById(companyId, id) {
+async function getTicketById(companyId, id, user = null) {
   const ticket = await prisma.ticket.findFirst({
-    where: { id, companyId },
+    where: { id, companyId, ...customerIdentityScope(user) },
     include: {
       customer: true,
       order: {
@@ -66,15 +76,29 @@ async function getTicketById(companyId, id) {
   return ticket;
 }
 
-async function createTicket(companyId, data, actorId, req = null) {
-  const customer = await prisma.customer.findFirst({
-    where: { id: data.customerId, companyId },
-  });
+async function createTicket(companyId, data, actorId, req = null, user = null) {
+  const customer = user?.role === "CUSTOMER"
+    ? await prisma.customer.findFirst({ where: { companyId, ...customerIdentityScope(user).customer } })
+    : await prisma.customer.findFirst({ where: { id: data.customerId, companyId } });
 
   if (!customer) {
     const error = new Error("Customer not found.");
     error.statusCode = 404;
     throw error;
+  }
+
+  let orderId = data.orderId || null;
+  if (orderId && user?.role === "CUSTOMER") {
+    const customerOrder = await prisma.salesOrder.findFirst({
+      where: { id: orderId, companyId, customerId: customer.id },
+      select: { id: true },
+    });
+    if (!customerOrder) {
+      const error = new Error("Order not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+    orderId = customerOrder.id;
   }
 
   const count = await prisma.ticket.count({ where: { companyId } });
@@ -85,7 +109,7 @@ async function createTicket(companyId, data, actorId, req = null) {
       data: {
         companyId,
         customerId: customer.id,
-        orderId: data.orderId || null,
+        orderId,
         createdById: actorId,
         assignedToId: data.assignedToId || null,
         ticketNumber,
@@ -134,7 +158,7 @@ async function createTicket(companyId, data, actorId, req = null) {
 // If under warranty, parts and labour lines are priced 0;
 // If expired, price normally.
 async function addTicketLine(companyId, ticketId, lineData, actorId, req = null) {
-  const ticket = await getTicketById(companyId, ticketId);
+  const ticket = await getTicketById(companyId, ticketId, null);
 
   let isWarrantyCovered = false;
 
@@ -200,8 +224,14 @@ async function addTicketLine(companyId, ticketId, lineData, actorId, req = null)
 // Ticket statuses: NEW → ASSIGNED → IN_PROGRESS → RESOLVED → CUSTOMER_CONFIRMED → CLOSED.
 // If expired parts/labour lines exist, auto-generate an Invoice.
 // Replacing a unit swaps the serial and starts a new warranty.
-async function resolveTicket(companyId, ticketId, data, actorId, req = null) {
-  const ticket = await getTicketById(companyId, ticketId);
+async function resolveTicket(companyId, ticketId, data, actorId, req = null, user = null) {
+  const ticket = await getTicketById(companyId, ticketId, user);
+
+  if (["RESOLVED", "CUSTOMER_CONFIRMED", "CLOSED"].includes(ticket.status)) {
+    const error = new Error("This service ticket has already been resolved.");
+    error.statusCode = 400;
+    throw error;
+  }
 
   return await prisma.$transaction(async (tx) => {
     // 1. Check for Unit Replacement (Serial Swap + New Warranty)
@@ -269,7 +299,11 @@ async function resolveTicket(companyId, ticketId, data, actorId, req = null) {
     const billableLines = ticket.lines.filter((l) => !l.isWarrantyCovered && Number(l.lineTotal) > 0);
     let invoice = null;
 
-    if (billableLines.length > 0) {
+    const existingInvoice = await tx.invoice.findFirst({
+      where: { ticketId: ticket.id, status: { not: "CANCELLED" } },
+    });
+
+    if (billableLines.length > 0 && !existingInvoice) {
       const subtotal = billableLines.reduce((sum, l) => sum + Number(l.lineTotal), 0);
       const gstRate = 18;
       const gstAmount = (subtotal * gstRate) / 100;
@@ -306,6 +340,8 @@ async function resolveTicket(companyId, ticketId, data, actorId, req = null) {
           },
         },
       });
+    } else if (existingInvoice) {
+      invoice = existingInvoice;
     }
 
     // 3. Mark ticket RESOLVED
@@ -346,8 +382,44 @@ async function resolveTicket(companyId, ticketId, data, actorId, req = null) {
   });
 }
 
-async function updateTicketStatus(companyId, ticketId, newStatus, actorId, req = null) {
-  const ticket = await getTicketById(companyId, ticketId);
+async function updateTicketStatus(companyId, ticketId, newStatus, actorId, req = null, user = null) {
+  const ticket = await getTicketById(companyId, ticketId, user);
+
+  if (user?.role === "CUSTOMER") {
+    if (newStatus !== "CUSTOMER_CONFIRMED" || ticket.status !== "RESOLVED") {
+      const error = new Error("Customers can only confirm a resolved service ticket.");
+      error.statusCode = 400;
+      throw error;
+    }
+  } else {
+    if (newStatus === "CUSTOMER_CONFIRMED") {
+      const error = new Error("Only the customer can confirm a resolved service ticket.");
+      error.statusCode = 403;
+      throw error;
+    }
+    if (newStatus === "CLOSED" && ticket.status !== "CUSTOMER_CONFIRMED") {
+      const error = new Error("A ticket can be closed only after customer confirmation.");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (newStatus === "CLOSED") {
+      const unpaidInvoice = await prisma.invoice.findFirst({
+        where: {
+          ticketId,
+          status: { not: "PAID" },
+          amountDue: { gt: 0 },
+        },
+        select: { invoiceNumber: true, amountDue: true },
+      });
+      if (unpaidInvoice) {
+        const error = new Error(
+          `Invoice ${unpaidInvoice.invoiceNumber} must be paid before closing this ticket.`
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+  }
 
   return await prisma.$transaction(async (tx) => {
     const updated = await tx.ticket.update({

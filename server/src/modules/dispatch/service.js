@@ -2,10 +2,15 @@ const prisma = require("../../config/prisma");
 const { recordAuditLog } = require("../../utils/audit");
 const { notifyRole } = require("../../utils/notify");
 
-async function getPickLists(companyId, filters = {}) {
+async function getPickLists(companyId, filters = {}, user = null) {
   const { status } = filters;
   const where = { companyId };
   if (status) where.status = status;
+  if (user?.role === "DELIVERY_AGENT") {
+    where.deliveryAgentId = user.id;
+    where.status = "COMPLETED";
+    where.order = { status: { not: "DELIVERED" } };
+  }
 
   return await prisma.pickList.findMany({
     where,
@@ -19,12 +24,31 @@ async function getPickLists(companyId, filters = {}) {
           zone: true,
         },
       },
+      deliveryAgent: { select: { id: true, name: true, phone: true } },
       order: {
         select: {
           id: true,
           orderNumber: true,
           status: true,
-          customer: { select: { id: true, name: true, phone: true, city: true } },
+          customer: { select: { id: true, name: true, phone: true, address: true, city: true, state: true, postalCode: true } },
+          deliveries: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              deliveryNumber: true,
+              status: true,
+              deliveryDate: true,
+              validatedAt: true,
+              deliveredAt: true,
+              deliveredTo: true,
+              customerAccepted: true,
+              customerAcceptedAt: true,
+            },
+          },
+          serialNumbers: {
+            select: { id: true, serial: true, status: true, product: { select: { name: true } } },
+          },
         },
       },
       lines: {
@@ -35,11 +59,134 @@ async function getPickLists(companyId, filters = {}) {
   });
 }
 
-async function getPickListById(companyId, id) {
+async function assignDeliveryAgent(companyId, pickListId, deliveryAgentId, actorId, req = null) {
+  const pickList = await prisma.pickList.findFirst({ where: { id: pickListId, companyId } });
+  if (!pickList) {
+    const error = new Error("Pick list not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+  const agent = await prisma.user.findFirst({
+    where: { id: deliveryAgentId, companyId, role: "DELIVERY_AGENT", isActive: true },
+    select: { id: true, name: true, phone: true },
+  });
+  if (!agent) {
+    const error = new Error("Active delivery agent not found in this company.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const updated = await prisma.pickList.update({
+    where: { id: pickListId },
+    data: { deliveryAgentId, assignedAt: new Date() },
+    include: { deliveryAgent: { select: { id: true, name: true, phone: true } } },
+  });
+  await recordAuditLog({
+    companyId,
+    actorId,
+    action: "DELIVERY_AGENT_ASSIGNED",
+    entityType: "PickList",
+    entityId: pickListId,
+    newValue: { deliveryAgentId },
+    req,
+  });
+  const existingDelivery = await prisma.delivery.findFirst({
+    where: { companyId, orderId: pickList.orderId, status: { not: "DELIVERED" } },
+  });
+  const order = await prisma.salesOrder.findUnique({
+    where: { id: pickList.orderId },
+    select: { customerId: true, customer: { select: { address: true } } },
+  });
+  if (!existingDelivery && order) {
+    const deliveryCount = await prisma.delivery.count({ where: { companyId } });
+    await prisma.delivery.create({
+      data: {
+        companyId,
+        orderId: pickList.orderId,
+        customerId: order.customerId,
+        deliveryNumber: `DEL-${new Date().getFullYear()}-${String(deliveryCount + 1).padStart(4, "0")}`,
+        status: "ASSIGNED",
+        deliveryAgentId,
+        deliveryAddress: order.customer.address || null,
+      },
+    });
+  } else if (existingDelivery) {
+    await prisma.delivery.update({
+      where: { id: existingDelivery.id },
+      data: {
+        deliveryAgentId,
+        status: "ASSIGNED",
+        deliveryAddress: order?.customer.address || existingDelivery.deliveryAddress,
+      },
+    });
+  }
+  await notifyRole(companyId, "ADMIN", {
+    type: "DELIVERY_AGENT_ASSIGNED",
+    title: "Delivery agent assigned",
+    message: `${agent.name} was assigned to pick list ${pickList.pickNumber}.`,
+    entityType: "PickList",
+    entityId: pickList.id,
+  });
+  return updated;
+}
+
+async function updateDeliveryStatus(companyId, orderId, status, data, actorId, req = null) {
+  const delivery = await prisma.delivery.findFirst({
+    where: {
+      companyId,
+      orderId,
+      deliveryAgentId: req?.user?.role === "DELIVERY_AGENT" ? req.user.id : undefined,
+    },
+  });
+  if (!delivery) {
+    const error = new Error("Assigned delivery not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+  const allowedNextStatuses = {
+    ASSIGNED: "IN_TRANSIT",
+    IN_TRANSIT: "ARRIVED",
+  };
+  if (allowedNextStatuses[delivery.status] !== status) {
+    const error = new Error(`Invalid delivery status transition from ${delivery.status} to ${status}.`);
+    error.statusCode = 400;
+    throw error;
+  }
+  const updated = await prisma.delivery.update({
+    where: { id: delivery.id },
+    data: {
+      status,
+      deliveryDate: status === "IN_TRANSIT" && !delivery.deliveryDate ? new Date() : delivery.deliveryDate,
+      validatedAt: status === "ARRIVED" && !delivery.validatedAt ? new Date() : delivery.validatedAt,
+      latitude: data.latitude ?? delivery.latitude,
+      longitude: data.longitude ?? delivery.longitude,
+    },
+  });
+  await recordAuditLog({
+    companyId,
+    actorId,
+    action: "DELIVERY_STATUS_CHANGED",
+    entityType: "Delivery",
+    entityId: delivery.id,
+    oldValue: { status: delivery.status },
+    newValue: { status },
+    req,
+  });
+  await notifyRole(companyId, "ADMIN", {
+    type: "DELIVERY_STATUS_CHANGED",
+    title: "Delivery status updated",
+    message: `Delivery ${delivery.deliveryNumber} is now ${status}.`,
+    entityType: "Delivery",
+    entityId: delivery.id,
+  });
+  return updated;
+}
+
+async function getPickListById(companyId, id, user = null) {
   const pickList = await prisma.pickList.findFirst({
-    where: { id, companyId },
+    where: { id, companyId, ...(user?.role === "DELIVERY_AGENT" ? { deliveryAgentId: user.id } : {}) },
     include: {
       warehouse: true,
+      deliveryAgent: { select: { id: true, name: true, phone: true } },
       order: {
         include: {
           customer: true,
@@ -395,6 +542,62 @@ async function validateDelivery(companyId, orderId, deliveryData = {}, actorId, 
     throw error;
   }
 
+  if (req?.user?.role === "DELIVERY_AGENT") {
+    const assignment = await prisma.pickList.findFirst({
+      where: { orderId, companyId, deliveryAgentId: req.user.id },
+    });
+    if (!assignment) {
+      const error = new Error("This delivery is not assigned to you.");
+      error.statusCode = 403;
+      throw error;
+    }
+    const assignedDelivery = await prisma.delivery.findFirst({
+      where: { companyId, orderId, deliveryAgentId: req.user.id, status: { not: "DELIVERED" } },
+      select: { status: true },
+    });
+    if (!assignedDelivery || assignedDelivery.status !== "ARRIVED") {
+      const error = new Error("Mark the delivery as arrived before confirming customer handover.");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!deliveryData.addressConfirmed) {
+      const error = new Error("Customer address must be confirmed before handover.");
+      error.statusCode = 400;
+      throw error;
+    }
+    const expectedAddress = (order.customer.address || "").trim().toLowerCase();
+    const submittedAddress = (deliveryData.deliveryAddress || "").trim().toLowerCase();
+    if (!expectedAddress || submittedAddress !== expectedAddress) {
+      const error = new Error("Delivery address does not match the customer's registered address.");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!deliveryData.deliveredTo?.trim()) {
+      const error = new Error("Recipient name is required for delivery handover.");
+      error.statusCode = 400;
+      throw error;
+    }
+    const expectedSerials = order.serialNumbers
+      .filter((serial) => ["DISPATCHED", "INSTALLED"].includes(serial.status))
+      .map((serial) => serial.serial.toLowerCase());
+    const verifiedSerials = [...new Set((deliveryData.verifiedSerials || []).map((serial) => serial.trim().toLowerCase()))];
+    const missingSerials = expectedSerials.filter((serial) => !verifiedSerials.includes(serial));
+    const unexpectedSerials = verifiedSerials.filter((serial) => !expectedSerials.includes(serial));
+    if (missingSerials.length > 0 || unexpectedSerials.length > 0) {
+      const error = new Error("Delivery cannot be confirmed until all assigned serialized products are scanned.");
+      error.statusCode = 400;
+      error.missingSerials = missingSerials;
+      error.unexpectedSerials = unexpectedSerials;
+      throw error;
+    }
+  }
+
+  if (order.status === "DELIVERED" || order.deliveredAt) {
+    const error = new Error("This order has already been delivered.");
+    error.statusCode = 400;
+    throw error;
+  }
+
   // Check required serials for all serial-tracked products
   const serialTrackedLines = (order.quote.lines || []).filter(
     (l) => l.product && l.product.isSerialTracked
@@ -439,7 +642,26 @@ async function validateDelivery(companyId, orderId, deliveryData = {}, actorId, 
     const deliveryCount = await tx.delivery.count({ where: { companyId } });
     const deliveryNumber = `DEL-${new Date().getFullYear()}-${String(deliveryCount + 1).padStart(4, "0")}`;
 
-    const delivery = await tx.delivery.create({
+    const existingDelivery = await tx.delivery.findFirst({ where: { companyId, orderId: order.id, status: { not: "DELIVERED" } } });
+    const delivery = existingDelivery
+      ? await tx.delivery.update({
+          where: { id: existingDelivery.id },
+          data: {
+            status: "DELIVERED",
+            deliveryDate,
+            validatedAt: new Date(),
+            deliveredAt: deliveryDate,
+            deliveryAgentId: req?.user?.role === "DELIVERY_AGENT" ? req.user.id : existingDelivery.deliveryAgentId,
+            deliveredTo: deliveryData.deliveredTo || order.customer.name,
+            deliveryAddress: deliveryData.deliveryAddress || order.customer.address || null,
+            recipientPhone: deliveryData.recipientPhone || order.customer.phone || null,
+            latitude: deliveryData.latitude ?? null,
+            longitude: deliveryData.longitude ?? null,
+            addressConfirmed: Boolean(deliveryData.addressConfirmed),
+            notes: deliveryData.notes || null,
+          },
+        })
+      : await tx.delivery.create({
       data: {
         companyId,
         orderId: order.id,
@@ -450,6 +672,12 @@ async function validateDelivery(companyId, orderId, deliveryData = {}, actorId, 
         validatedAt: new Date(),
         deliveredAt: deliveryDate,
         deliveredTo: deliveryData.deliveredTo || order.customer.name,
+        deliveryAgentId: req?.user?.role === "DELIVERY_AGENT" ? req.user.id : null,
+        deliveryAddress: deliveryData.deliveryAddress || order.customer.address || null,
+        recipientPhone: deliveryData.recipientPhone || order.customer.phone || null,
+        latitude: deliveryData.latitude ?? null,
+        longitude: deliveryData.longitude ?? null,
+        addressConfirmed: Boolean(deliveryData.addressConfirmed),
         notes: deliveryData.notes || null,
       },
     });
@@ -482,10 +710,7 @@ async function validateDelivery(companyId, orderId, deliveryData = {}, actorId, 
     });
 
     // 5. Business Rule 6: Auto-create/sync Warranty per serial according to Installation Date
-    const installJob = await tx.installationJob.findFirst({
-      where: { orderId: order.id },
-    });
-    const startDate = installJob?.completedAt || installJob?.scheduledAt || deliveryDate;
+    const startDate = deliveryDate;
 
     const warrantiesCreated = [];
     for (const sn of order.serialNumbers) {
@@ -947,6 +1172,8 @@ module.exports = {
   pickItem,
   assignWarehouseToPickList,
   validateDelivery,
+  updateDeliveryStatus,
+  assignDeliveryAgent,
   lookupBarcode,
   getItemBarcodes,
   seedUniqueItemCodes,

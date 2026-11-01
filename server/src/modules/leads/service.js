@@ -1,7 +1,7 @@
 const prisma = require("../../config/prisma");
 const bcrypt = require("bcrypt");
 const { recordAuditLog } = require("../../utils/audit");
-const { createNotification } = require("../../utils/notify");
+const { createNotification, notifyRole } = require("../../utils/notify");
 
 async function getLeads(companyId, filters = {}, currentUser = null) {
   const { stage, assignedToId, includeArchived = "false", search, source, myLeadsOnly, page, limit, q } = filters;
@@ -590,27 +590,22 @@ async function updateChecklist(companyId, id, checklistData, actorId, req = null
             shadowFreeArea: true,
             monthlyBill: true,
             gridSuitable: true,
+            surveyedById: null, // Admin manually assigns technician
           },
         });
 
-        const techUsers = await tx.user.findMany({
-          where: { companyId, role: "TECHNICIAN", isActive: true },
-          select: { id: true },
-        });
-        for (const tech of techUsers) {
-          await createNotification(
-            {
-              companyId,
-              userId: tech.id,
-              type: "SURVEY_ASSIGNED",
-              title: "New Survey Task Requested",
-              message: `Lead '${lead.title}' has been qualified. Site survey task is ready for scheduling.`,
-              entityType: "Survey",
-              entityId: newSurvey.id,
-            },
-            tx
-          );
-        }
+        await notifyRole(
+          companyId,
+          "ADMIN",
+          {
+            type: "GENERAL",
+            title: "Site Survey Requires Technician Assignment",
+            message: `Lead '${lead.title}' (${lead.contactName}) was qualified. Please assign a technician for site survey.`,
+            entityType: "Survey",
+            entityId: newSurvey.id,
+          },
+          tx
+        );
       }
     }
 
@@ -677,7 +672,7 @@ async function updateStage(companyId, id, stageData, actorId, req = null) {
         where: { leadId: id, companyId },
       });
       if (!existingSurvey) {
-        await tx.survey.create({
+        const newSurvey = await tx.survey.create({
           data: {
             companyId,
             leadId: id,
@@ -686,8 +681,22 @@ async function updateStage(companyId, id, stageData, actorId, req = null) {
             shadowFreeArea: true,
             monthlyBill: true,
             gridSuitable: true,
+            surveyedById: null, // Admin manually assigns technician
           },
         });
+
+        await notifyRole(
+          companyId,
+          "ADMIN",
+          {
+            type: "GENERAL",
+            title: "Site Survey Requires Technician Assignment",
+            message: `Lead '${lead.title}' (${lead.contactName}) was qualified. Please assign a technician for site survey.`,
+            entityType: "Survey",
+            entityId: newSurvey.id,
+          },
+          tx
+        );
       }
     }
 

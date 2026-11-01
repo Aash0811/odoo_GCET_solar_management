@@ -16,6 +16,7 @@ async function getCustomerPortalData(companyId, customerId) {
       },
       orders: {
         include: {
+          deliveries: { orderBy: { createdAt: "desc" } },
           payments: { orderBy: { receivedAt: "desc" } },
           installationJobs: {
             include: {
@@ -40,6 +41,13 @@ async function getCustomerPortalData(companyId, customerId) {
           lines: { include: { product: true } },
         },
         orderBy: { reportedAt: "desc" },
+      },
+      invoices: {
+        orderBy: { createdAt: "desc" },
+        include: {
+          lines: true,
+          ticket: { select: { id: true, ticketNumber: true, title: true } },
+        },
       },
       subsidyApplications: {
         orderBy: { createdAt: "desc" },
@@ -94,8 +102,49 @@ async function getCustomerPortalData(companyId, customerId) {
     warranties: formattedWarranties,
     serialNumbers: customer.serialNumbers || [],
     tickets: customer.tickets,
+    invoices: customer.invoices,
     subsidies: customer.subsidyApplications,
   };
+}
+
+async function acceptDelivery(companyId, customerId, deliveryId, data, actorId, req = null) {
+  const delivery = await prisma.delivery.findFirst({
+    where: { id: deliveryId, companyId, customerId, status: "DELIVERED" },
+  });
+  if (!delivery) {
+    const error = new Error("Delivered order not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+  const signature = data.signatureImage.startsWith("data:")
+    ? data.signatureImage
+    : `data:image/png;base64,${data.signatureImage}`;
+  const accepted = await prisma.delivery.update({
+    where: { id: deliveryId },
+    data: {
+      customerAccepted: true,
+      customerAcceptedAt: new Date(),
+      acceptanceSignature: signature,
+      acceptanceNotes: data.acceptanceText || "Customer accepted delivery.",
+    },
+  });
+  await notifyRole(companyId, "ADMIN", {
+    type: "DELIVERY_ACCEPTED",
+    title: "Customer accepted delivery",
+    message: `Delivery ${delivery.deliveryNumber} was accepted by the customer.`,
+    entityType: "Delivery",
+    entityId: delivery.id,
+  });
+  await recordAuditLog({
+    companyId,
+    actorId,
+    action: "DELIVERY_ACCEPTED",
+    entityType: "Delivery",
+    entityId: delivery.id,
+    newValue: { signedByName: data.signedByName },
+    req,
+  });
+  return accepted;
 }
 
 async function customerRaiseTicket(companyId, customerId, data, actorId, req = null) {
@@ -201,4 +250,5 @@ module.exports = {
   getCustomerPortalData,
   customerRaiseTicket,
   signJobAcceptance,
+  acceptDelivery,
 };

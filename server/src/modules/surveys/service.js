@@ -39,6 +39,9 @@ async function getSurveys(companyId, filters = {}, user = null) {
   if (surveyedById && surveyedById !== "ALL") {
     where.surveyedById = surveyedById;
   }
+  if (user?.role === "TECHNICIAN") {
+    where.surveyedById = user.id;
+  }
 
   const searchQuery = (search || q || "").trim();
   if (searchQuery) {
@@ -109,9 +112,13 @@ async function getSurveys(companyId, filters = {}, user = null) {
   return mapped;
 }
 
-async function getSurveyById(companyId, id) {
+async function getSurveyById(companyId, id, user = null) {
   const survey = await prisma.survey.findFirst({
-    where: { id, companyId },
+    where: {
+      id,
+      companyId,
+      ...(user?.role === "TECHNICIAN" ? { surveyedById: user.id } : {}),
+    },
     include: {
       lead: {
         include: {
@@ -224,6 +231,28 @@ async function scheduleSurvey(companyId, data, actorId, req = null) {
   }
 
   return await prisma.$transaction(async (tx) => {
+    const assignedTechnicianId = data.surveyedById;
+    if (!assignedTechnicianId) {
+      const error = new Error("Technician assignment is required. The Admin must select a qualified technician to assign this site survey.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const selectedTechnician = await tx.user.findFirst({
+      where: {
+        id: assignedTechnicianId,
+        companyId,
+        isActive: true,
+        role: { in: ["TECHNICIAN", "ADMIN"] },
+      },
+      select: { id: true, name: true, phone: true },
+    });
+    if (!selectedTechnician) {
+      const error = new Error("Selected technician is not active or does not belong to this company.");
+      error.statusCode = 400;
+      throw error;
+    }
+
     let survey;
     if (existingSurvey || data.surveyId) {
       const sId = existingSurvey ? existingSurvey.id : data.surveyId;
@@ -231,7 +260,7 @@ async function scheduleSurvey(companyId, data, actorId, req = null) {
         where: { id: sId },
         data: {
           scheduledAt: data.scheduledAt,
-          surveyedById: data.surveyedById || null,
+          surveyedById: assignedTechnicianId,
           notes: data.notes || existingSurvey?.notes || null,
           status: "SCHEDULED",
         },
@@ -247,7 +276,7 @@ async function scheduleSurvey(companyId, data, actorId, req = null) {
           where: { id: foundForLead.id },
           data: {
             scheduledAt: data.scheduledAt,
-            surveyedById: data.surveyedById || null,
+            surveyedById: assignedTechnicianId,
             notes: data.notes || foundForLead.notes || null,
             status: "SCHEDULED",
           },
@@ -258,7 +287,7 @@ async function scheduleSurvey(companyId, data, actorId, req = null) {
             companyId,
             leadId: lead.id,
             scheduledAt: data.scheduledAt,
-            surveyedById: data.surveyedById || null,
+            surveyedById: assignedTechnicianId,
             notes: data.notes || null,
             status: "SCHEDULED",
             recommendedKw: lead.desiredCapacityKw || 3,
@@ -286,20 +315,25 @@ async function scheduleSurvey(companyId, data, actorId, req = null) {
         action: "CREATE",
         entityType: "Survey",
         entityId: survey.id,
-        newValue: { status: survey.status, scheduledAt: survey.scheduledAt, surveyedById: data.surveyedById },
+        newValue: {
+          status: survey.status,
+          scheduledAt: survey.scheduledAt,
+          surveyedById: assignedTechnicianId,
+          assignedByAdmin: true,
+        },
         req,
       },
       tx
     );
 
-    if (data.surveyedById) {
+    if (assignedTechnicianId) {
       await createNotification(
         {
           companyId,
-          userId: data.surveyedById,
+          userId: assignedTechnicianId,
           type: "SURVEY_ASSIGNED",
-          title: "Site Survey Scheduled",
-          message: `You have been assigned to conduct a site survey for '${lead.contactName}' on ${new Date(
+          title: "Site Survey Assigned by Admin",
+          message: `Admin assigned you to conduct a site survey for '${lead.contactName}' on ${new Date(
             data.scheduledAt
           ).toLocaleString("en-IN")}.`,
           entityType: "Survey",
@@ -313,8 +347,8 @@ async function scheduleSurvey(companyId, data, actorId, req = null) {
   });
 }
 
-async function submitSurvey(companyId, id, data, files = [], actorId, req = null) {
-  const survey = await getSurveyById(companyId, id);
+async function submitSurvey(companyId, id, data, files = [], actorId, req = null, user = null) {
+  const survey = await getSurveyById(companyId, id, user);
 
   return await prisma.$transaction(async (tx) => {
     // 1. Process and upload photos

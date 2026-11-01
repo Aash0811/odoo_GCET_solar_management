@@ -17,9 +17,7 @@ import {
   Zap,
   ShieldCheck,
   Calculator,
-  Sliders,
   BadgePercent,
-  Layers,
   FileCheck2,
   Share2,
   Copy,
@@ -30,12 +28,12 @@ import {
   CheckCircle2,
   XCircle,
   Search,
-  Wand2,
   X,
   Camera,
   ImageIcon,
   Upload,
   RefreshCw,
+  Sliders,
 } from 'lucide-react';
 
 export default function QuoteBuilderPage() {
@@ -45,6 +43,7 @@ export default function QuoteBuilderPage() {
 
   const [quotes, setQuotes] = useState([]);
   const [approvedLeads, setApprovedLeads] = useState([]);
+  const [qualifiedLeads, setQualifiedLeads] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [catalogProducts, setCatalogProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +61,22 @@ export default function QuoteBuilderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [copiedId, setCopiedId] = useState(null);
+  const [showLeadForm, setShowLeadForm] = useState(false);
+  const [creatingLead, setCreatingLead] = useState(false);
+  const [newLeadForm, setNewLeadForm] = useState({
+    contactName: '',
+    phone: '',
+    email: '',
+    address: '',
+    desiredCapacityKw: 3,
+    monthlyBillAmount: '',
+    systemType: 'ON_GRID',
+    subsidyInterest: true,
+  });
+
+  // Customer-specific product customization
+  const [showCustomizeModal, setShowCustomizeModal] = useState(false);
+  const [activeCustomizerTab, setActiveCustomizerTab] = useState('PANEL');
 
   // Custom component picker modal
   const [showAddProductModal, setShowAddProductModal] = useState(false);
@@ -69,9 +84,6 @@ export default function QuoteBuilderPage() {
   const [selectedAddProductId, setSelectedAddProductId] = useState('');
   const [addQty, setAddQty] = useState(1);
 
-  // Solar Hardware Customizer Studio state
-  const [showCustomizeModal, setShowCustomizeModal] = useState(false);
-  const [activeCustomizerTab, setActiveCustomizerTab] = useState('PANEL');
   const [isCustomized, setIsCustomized] = useState(false);
 
   // Component Swap Modal state
@@ -128,14 +140,16 @@ export default function QuoteBuilderPage() {
 
   const loadData = async () => {
     try {
-      const [quotesRes, leadsRes, tmplRes, prodRes] = await Promise.all([
+      const [quotesRes, leadsRes, qualifiedRes, tmplRes, prodRes] = await Promise.all([
         quotesApi.list(),
         leadsApi.list({ stage: 'SURVEY_APPROVED' }),
+        leadsApi.list({ stage: 'QUALIFIED' }),
         inventoryApi.getTemplates(),
         inventoryApi.getProducts(),
       ]);
       setQuotes(quotesRes.data?.data || []);
       setApprovedLeads(leadsRes.data?.data || []);
+      setQualifiedLeads(qualifiedRes.data?.data || []);
       setTemplates(tmplRes.data?.data || []);
       setCatalogProducts(prodRes.data?.data || []);
 
@@ -156,6 +170,55 @@ export default function QuoteBuilderPage() {
       console.error('Failed to load quote builder data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateQualifiedLead = async (e) => {
+    e.preventDefault();
+    setCreatingLead(true);
+    try {
+      const leadResponse = await leadsApi.create({
+        title: `${Number(newLeadForm.desiredCapacityKw || 3)} kW Solar Enquiry - ${newLeadForm.contactName}`,
+        contactName: newLeadForm.contactName.trim(),
+        phone: newLeadForm.phone.trim(),
+        email: newLeadForm.email.trim(),
+        address: newLeadForm.address.trim(),
+        desiredCapacityKw: Number(newLeadForm.desiredCapacityKw || 3),
+        monthlyBillAmount: Number(newLeadForm.monthlyBillAmount || 0),
+        systemType: newLeadForm.systemType,
+        subsidyInterest: newLeadForm.subsidyInterest,
+        source: 'SALES_QUOTE_BUILDER',
+      });
+
+      const createdLead = leadResponse.data?.data;
+      if (!createdLead?.id) throw new Error('Lead was created without an ID.');
+
+      await leadsApi.updateChecklist(createdLead.id, {
+        shadowFreeArea: true,
+        monthlyBill: true,
+        gridSuitable: true,
+        monthlyBillAmount: Number(newLeadForm.monthlyBillAmount || 0),
+        desiredCapacityKw: Number(newLeadForm.desiredCapacityKw || 3),
+        decision: 'GO',
+      });
+
+      setShowLeadForm(false);
+      setNewLeadForm({
+        contactName: '',
+        phone: '',
+        email: '',
+        address: '',
+        desiredCapacityKw: 3,
+        monthlyBillAmount: '',
+        systemType: 'ON_GRID',
+        subsidyInterest: true,
+      });
+      setSuccessMsg(`${newLeadForm.contactName} was added directly as a Qualified lead. Schedule and approve the site survey before issuing a quote.`);
+      await loadData();
+    } catch (err) {
+      alert('Failed to create qualified lead: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setCreatingLead(false);
     }
   };
 
@@ -455,10 +518,6 @@ export default function QuoteBuilderPage() {
     ? Number(selectedPanelLine.quantity)
     : Math.ceil(capacityKw * 1.85);
 
-  const selectedPanelModel = selectedPanelLine
-    ? selectedPanelLine.description
-    : 'Mono-PERC 540W Tier-1 Module';
-
   const handleCreateQuote = async (e) => {
     e.preventDefault();
     if (!selectedLeadId) {
@@ -561,46 +620,50 @@ export default function QuoteBuilderPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner with Odoo Styling */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-[#EBDCE7]">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#f09e38] animate-pulse"></span>
-            <h1 className="text-2xl font-black text-[#241621] tracking-tight">Solar Quotation Studio</h1>
+    <div className="max-w-[1600px] mx-auto space-y-8 pb-8">
+      <header className="rounded-3xl bg-gradient-to-br from-[#241621] via-[#382433] to-[#714B67] px-5 py-6 sm:px-8 sm:py-7 text-white shadow-xl shadow-[#714B67]/15">
+        <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <span className="w-3 h-3 rounded-full bg-[#f09e38] shadow-[0_0_0_5px_rgba(240,158,56,0.18)]"></span>
+              <p className="text-[11px] uppercase tracking-[0.18em] font-black text-[#f6c477]">Sales workspace</p>
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight mt-2">Solar quotation studio</h1>
+            <p className="text-sm text-[#ead7e5] mt-2 max-w-2xl">
+              Build a customer-ready proposal from an approved site survey. Package sizing, BOM quantities and pricing update as you work.
+            </p>
           </div>
-          <p className="text-xs text-[#714B67] font-medium mt-0.5">
-            Rule 2 Strict Gatekeeper (Survey Approved) & Rule 3 Dynamic BOM Sizing Engine
-          </p>
+
+          <div className="rounded-2xl bg-white/10 border border-white/15 p-3 min-w-[260px]">
+            <div className="flex items-center justify-between text-[10px] uppercase tracking-wider font-black text-[#dabed3]">
+              <span>Quotation workflow</span>
+              <span>Step 2 of 3</span>
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              <span className="flex-1 h-1.5 rounded-full bg-[#f09e38]"></span>
+              <span className="flex-1 h-1.5 rounded-full bg-[#f09e38]"></span>
+              <span className="flex-1 h-1.5 rounded-full bg-white/25"></span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-2 text-[10px] font-bold text-[#ead7e5]">
+              <span>Survey approved</span>
+              <span className="text-[#f6c477] text-center">Build quote</span>
+              <span className="text-right">Send & accept</span>
+            </div>
+          </div>
         </div>
 
-        {/* Quick dynamic capacity preset chips */}
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold text-[#b886ad] uppercase">
-            Supply Range ({minKw ?? 'Not configured'}–{maxKw ?? 'Not configured'}{minKw != null && maxKw != null ? ' kW' : ''}):
+        <div className="mt-6 flex items-center justify-end">
+          <span className="text-[11px] text-[#dabed3]">
+            Admin capacity range: {minKw ?? 'Not configured'}–{maxKw ?? 'Not configured'}{minKw != null && maxKw != null ? ' kW' : ''}
           </span>
-          {dynamicPresets.map((kw) => (
-            <button
-              key={kw}
-              type="button"
-              onClick={() => setCapacityKw(kw)}
-              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all ${
-                capacityKw === kw
-                  ? 'bg-[#714B67] text-white shadow-md shadow-[#714B67]/30 ring-2 ring-[#f09e38]'
-                  : 'bg-white text-[#714B67] border border-[#EBDCE7] hover:bg-[#F5EDF3]'
-              }`}
-            >
-              {kw} kW
-            </button>
-          ))}
         </div>
-      </div>
+      </header>
 
-      <div className="grid lg:grid-cols-12 gap-6">
-        {/* Left 7 cols: Interactive Builder Form */}
-        <div className="lg:col-span-7 odoo-glass-card p-6 rounded-2xl space-y-6">
+      <div className="grid xl:grid-cols-12 gap-6 items-start">
+        {/* Interactive Builder Form */}
+        <div className="xl:col-span-8 odoo-glass-card p-4 sm:p-7 rounded-3xl space-y-7">
           <div className="flex items-center justify-between pb-3 border-b border-[#EBDCE7]">
-            <h2 className="text-sm font-extrabold text-[#241621] flex items-center gap-2">
+            <h2 className="text-base font-extrabold text-[#241621] flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-[#f09e38]" /> Auto-Configuring Solar Engine
             </h2>
             <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-[#f09e38]/15 text-[#d4821a] font-black border border-[#f09e38]/30">
@@ -614,12 +677,119 @@ export default function QuoteBuilderPage() {
             </div>
           )}
 
-          <form onSubmit={handleCreateQuote} className="space-y-5 text-xs">
+          <div className="rounded-2xl border border-[#EBDCE7] bg-[#FAF6F9] p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider font-black text-[#b886ad]">Part 1 · New lead</p>
+                <h3 className="text-sm font-black text-[#241621] mt-1">Create a qualified lead directly</h3>
+                <p className="text-xs text-[#714B67] mt-1">
+                  Add the customer and confirm the three qualification gates. A survey task will be created automatically.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLeadForm((open) => !open)}
+                className="shrink-0 px-3.5 py-2 rounded-xl bg-[#714B67] hover:bg-[#855278] text-white text-xs font-black transition cursor-pointer"
+              >
+                {showLeadForm ? 'Close form' : 'Add qualified lead'}
+              </button>
+            </div>
+
+            {showLeadForm && (
+              <form onSubmit={handleCreateQualifiedLead} className="mt-4 pt-4 border-t border-[#EBDCE7] grid sm:grid-cols-2 gap-3">
+                <input
+                  required
+                  value={newLeadForm.contactName}
+                  onChange={(e) => setNewLeadForm((prev) => ({ ...prev, contactName: e.target.value }))}
+                  placeholder="Customer name"
+                  className="p-2.5 rounded-xl border border-[#EBDCE7] bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-[#714B67]"
+                />
+                <input
+                  required
+                  value={newLeadForm.phone}
+                  onChange={(e) => setNewLeadForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  placeholder="Phone number"
+                  inputMode="tel"
+                  minLength={10}
+                  className="p-2.5 rounded-xl border border-[#EBDCE7] bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-[#714B67]"
+                />
+                <input
+                  type="email"
+                  value={newLeadForm.email}
+                  onChange={(e) => setNewLeadForm((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="Email (optional)"
+                  className="p-2.5 rounded-xl border border-[#EBDCE7] bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-[#714B67]"
+                />
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  required
+                  value={newLeadForm.desiredCapacityKw}
+                  onChange={(e) => setNewLeadForm((prev) => ({ ...prev, desiredCapacityKw: e.target.value }))}
+                  placeholder="Desired capacity (kW)"
+                  className="p-2.5 rounded-xl border border-[#EBDCE7] bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-[#714B67]"
+                />
+                <input
+                  value={newLeadForm.address}
+                  onChange={(e) => setNewLeadForm((prev) => ({ ...prev, address: e.target.value }))}
+                  placeholder="Installation address"
+                  className="sm:col-span-2 p-2.5 rounded-xl border border-[#EBDCE7] bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-[#714B67]"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  value={newLeadForm.monthlyBillAmount}
+                  onChange={(e) => setNewLeadForm((prev) => ({ ...prev, monthlyBillAmount: e.target.value }))}
+                  placeholder="Monthly electricity bill (₹)"
+                  className="p-2.5 rounded-xl border border-[#EBDCE7] bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-[#714B67]"
+                />
+                <select
+                  value={newLeadForm.systemType}
+                  onChange={(e) => setNewLeadForm((prev) => ({ ...prev, systemType: e.target.value }))}
+                  className="p-2.5 rounded-xl border border-[#EBDCE7] bg-white text-xs font-semibold outline-none focus:ring-2 focus:ring-[#714B67]"
+                >
+                  <option value="ON_GRID">On-grid</option>
+                  <option value="HYBRID">Hybrid</option>
+                  <option value="OFF_GRID">Off-grid</option>
+                </select>
+                <label className="sm:col-span-2 flex items-center gap-2 text-xs font-bold text-[#714B67]">
+                  <input
+                    type="checkbox"
+                    checked={newLeadForm.subsidyInterest}
+                    onChange={(e) => setNewLeadForm((prev) => ({ ...prev, subsidyInterest: e.target.checked }))}
+                    className="accent-[#714B67]"
+                  />
+                  Customer is interested in subsidy
+                </label>
+                <button
+                  type="submit"
+                  disabled={creatingLead}
+                  className="sm:col-span-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition disabled:opacity-50 cursor-pointer"
+                >
+                  {creatingLead ? 'Creating qualified lead...' : 'Create qualified lead'}
+                </button>
+              </form>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 pt-1">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#714B67] text-xs font-black text-white">2</span>
+            <div>
+              <h2 className="text-base font-black text-[#241621]">Quote builder</h2>
+              <p className="text-xs text-[#714B67]">Select a survey-approved lead and prepare the commercial proposal.</p>
+            </div>
+            <div className="h-px flex-1 bg-[#EBDCE7]" />
+          </div>
+
+          <form id="quote-builder-form" onSubmit={handleCreateQuote} className="space-y-7 text-sm">
             {/* Lead Selector (Rule 2) */}
             <div>
               <label className="font-extrabold text-[#241621] mb-1.5 flex items-center justify-between">
                 <span>1. Target Customer Lead (Rule 2: Must be Survey Approved)</span>
-                <span className="text-[10px] text-[#b886ad] font-semibold">{approvedLeads.length} leads eligible</span>
+                <span className="text-[10px] text-[#b886ad] font-semibold">
+                  {approvedLeads.length} approved · {qualifiedLeads.length} awaiting survey
+                </span>
               </label>
 
               {approvedLeads.length === 0 ? (
@@ -657,7 +827,7 @@ export default function QuoteBuilderPage() {
                       Auto-Populated in Quote
                     </span>
                   </div>
-                  <div className="grid grid-cols-4 gap-2 text-[11px] pt-1">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px] pt-1">
                     <div>
                       <span className="text-slate-500 text-[10px] block">Recommended Size:</span>
                       <span className="font-black text-emerald-900">{activeSurvey.recommendedKw || capacityKw} kW</span>
@@ -687,32 +857,16 @@ export default function QuoteBuilderPage() {
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="font-extrabold text-[#241621] flex items-center gap-1.5">
                     <span>2. Solar Package Template</span>
-                    {isCustomized && (
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
-                        <Sparkles className="w-2.5 h-2.5 text-[#f09e38]" /> Custom Tailored
-                      </span>
-                    )}
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveCustomizerTab('PANEL');
-                      setShowCustomizeModal(true);
-                    }}
-                    className="text-[11px] font-black text-[#d4821a] hover:text-[#b36c12] flex items-center gap-1 cursor-pointer bg-[#f09e38]/10 hover:bg-[#f09e38]/20 px-2 py-0.5 rounded-md border border-[#f09e38]/30 transition"
-                    title="Tailor solar panels, inverter and hardware specifically for this customer"
-                  >
-                    <Wand2 className="w-3 h-3 text-[#f09e38]" /> Customize Products for Customer →
-                  </button>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2">
+                <div className="space-y-2">
                   <select
                     value={selectedTemplateId}
                     onChange={(e) => {
                       setSelectedTemplateId(e.target.value);
                       setIsCustomized(false);
                     }}
-                    className="flex-1 p-2.5 rounded-xl border border-[#EBDCE7] bg-white font-semibold text-[#241621] focus:ring-2 focus:ring-[#714B67] outline-none shadow-xs"
+                    className="w-full p-2.5 rounded-xl border border-[#EBDCE7] bg-white font-semibold text-[#241621] focus:ring-2 focus:ring-[#714B67] outline-none shadow-xs"
                   >
                     {templates.map((t) => (
                       <option key={t.id} value={t.id}>
@@ -723,49 +877,16 @@ export default function QuoteBuilderPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveCustomizerTab('PANEL');
+                      setActiveCustomizerTab('ALL_ITEMS');
                       setShowCustomizeModal(true);
                     }}
-                    className="px-3.5 py-2.5 bg-gradient-to-r from-[#f09e38] via-[#e08920] to-[#d4821a] hover:opacity-95 text-[#241621] rounded-xl text-xs font-black transition flex items-center justify-center gap-2 shrink-0 shadow-md shadow-[#f09e38]/25 cursor-pointer ring-1 ring-[#f09e38]"
-                    title="Customize Solar Panels, Inverter, Battery & Hardware for this Customer"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#714B67] hover:bg-[#855278] text-white text-xs font-black transition flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                    title="Customize products for this customer"
                   >
-                    <Sliders className="w-4 h-4 text-[#241621]" />
-                    <span>Customize Products for Customer</span>
+                    <Sliders className="w-4 h-4 text-[#f6c477]" />
+                    <span>Customize products</span>
                   </button>
                 </div>
-
-                {isCustomized && (
-                  <div className="mt-2 p-2.5 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-950 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-[#f09e38] shrink-0" />
-                      <div>
-                        <span className="font-extrabold text-[#714B67]">Customized for Customer: </span>
-                        <span className="text-[11px] text-slate-700">
-                          {bomLines.length} tailored components active in proposal.
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveCustomizerTab('ALL_ITEMS');
-                          setShowCustomizeModal(true);
-                        }}
-                        className="px-2 py-0.5 rounded-md bg-[#714B67] text-white text-[10px] font-bold hover:bg-[#855278] cursor-pointer"
-                      >
-                        Edit Custom
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleResetToTemplate}
-                        className="px-2 py-0.5 rounded-md bg-white border border-amber-300 text-amber-900 text-[10px] font-bold hover:bg-amber-100 cursor-pointer"
-                      >
-                        Reset
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
 
               <div>
@@ -816,54 +937,6 @@ export default function QuoteBuilderPage() {
               </div>
             </div>
 
-            {/* Live Photovoltaic Solar Array Visualizer Widget */}
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-[#241621] to-[#382433] text-white shadow-inner space-y-3">
-              <div className="flex items-center justify-between text-xs border-b border-white/10 pb-2">
-                <span className="font-extrabold flex items-center gap-1.5 text-[#dabed3]">
-                  <Layers className="w-4 h-4 text-[#f09e38]" /> Real-Time Solar Array Simulation
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveCustomizerTab('PANEL');
-                      setShowCustomizeModal(true);
-                    }}
-                    className="text-[10px] px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-[#f09e38] font-black border border-[#f09e38]/40 transition flex items-center gap-1 cursor-pointer"
-                    title="Customize Solar Panel Module Type (Mono PERC, Bifacial TOPCon, Poly)"
-                  >
-                    <Sun className="w-3 h-3 text-[#f09e38]" /> Customize Solar Panels
-                  </button>
-                  <span className="text-[11px] text-[#f09e38] font-bold">
-                    {capacityKw} kW Peak • ~{Math.round(capacityKw * 4.3)} kWh/Day Yield
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 py-1">
-                {Array.from({ length: approxPanelCount }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="solar-cell h-10 rounded-md flex flex-col items-center justify-center border border-sky-400/50 shadow-xs group"
-                    title={`Panel #${i + 1}: ${selectedPanelModel}`}
-                  >
-                    <div className="w-full h-0.5 bg-sky-300/30 my-auto"></div>
-                    <span className="text-[8px] font-mono font-bold text-sky-200 truncate px-1">
-                      {selectedPanelModel.includes('550')
-                        ? '550W'
-                        : selectedPanelModel.includes('330')
-                        ? '330W'
-                        : '540W'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[10px] text-[#dabed3]/80 flex items-center justify-between">
-                <span>Calculated for {selectedPanelModel} with 25-Year Performance Warranty.</span>
-                <span className="font-mono text-[#f09e38] font-bold">{approxPanelCount} Modules Configured</span>
-              </p>
-            </div>
-
             {/* Editable BOM Lines Table (Rule 3) */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -871,17 +944,6 @@ export default function QuoteBuilderPage() {
                   <Calculator className="w-3.5 h-3.5 text-[#714B67]" /> Bill of Materials (BOM) Sizing & Customization
                 </span>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveCustomizerTab('ALL_ITEMS');
-                      setShowCustomizeModal(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-[#714B67] to-[#8a5d7e] hover:opacity-95 text-white rounded-lg text-xs font-black shadow-xs transition cursor-pointer"
-                    title="Customize all products for customer"
-                  >
-                    <Sliders className="w-3.5 h-3.5 text-[#f09e38]" /> Customize Products for Customer
-                  </button>
                   <button
                     type="button"
                     onClick={() => setShowAddProductModal(true)}
@@ -895,17 +957,18 @@ export default function QuoteBuilderPage() {
                 </div>
               </div>
 
-              <div className="border border-[#EBDCE7] rounded-2xl overflow-hidden divide-y divide-[#EBDCE7]/60 shadow-xs bg-white">
-                <div className="bg-[#F5EDF3] p-2.5 grid grid-cols-12 gap-2 font-black text-[10px] text-[#714B67] uppercase tracking-wider">
-                  <div className="col-span-5">Component Description</div>
-                  <div className="col-span-2 text-right">Qty</div>
-                  <div className="col-span-2 text-right">Unit Rate (₹)</div>
-                  <div className="col-span-2 text-right">Line Total (₹)</div>
-                  <div className="col-span-1 text-center">Action</div>
-                </div>
+              <div className="border border-[#EBDCE7] rounded-2xl overflow-x-auto shadow-xs bg-white">
+                <div className="min-w-[700px] divide-y divide-[#EBDCE7]/60">
+                  <div className="bg-[#F5EDF3] p-2.5 grid grid-cols-12 gap-2 font-black text-[10px] text-[#714B67] uppercase tracking-wider">
+                    <div className="col-span-5">Component Description</div>
+                    <div className="col-span-2 text-right">Qty</div>
+                    <div className="col-span-2 text-right">Unit Rate (₹)</div>
+                    <div className="col-span-2 text-right">Line Total (₹)</div>
+                    <div className="col-span-1 text-center">Action</div>
+                  </div>
 
-                {bomLines.map((line, idx) => (
-                  <div key={idx} className="p-2.5 grid grid-cols-12 gap-2 items-center text-xs hover:bg-[#FAF6F9] transition-colors">
+                  {bomLines.map((line, idx) => (
+                    <div key={idx} className="p-2.5 grid grid-cols-12 gap-2 items-center text-xs hover:bg-[#FAF6F9] transition-colors">
                     <input
                       type="text"
                       value={line.description}
@@ -946,8 +1009,9 @@ export default function QuoteBuilderPage() {
                         <Trash2 className="w-3.5 h-3.5 mx-auto" />
                       </button>
                     </div>
-                  </div>
-                ))}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -1068,8 +1132,9 @@ export default function QuoteBuilderPage() {
               )}
             </div>
 
-            {/* ── Roof Condition Photo Upload ─────────────────────────────── */}
-            <div className="bg-white rounded-2xl border border-[#EBDCE7] p-4 space-y-3 shadow-xs">
+            {/* Salesmen do not upload site images from the quote builder. */}
+            {role !== 'SALESMAN' && (
+              <div className="bg-white rounded-2xl border border-[#EBDCE7] p-4 space-y-3 shadow-xs">
               <div className="flex items-center justify-between">
                 <span className="font-extrabold text-[#241621] flex items-center gap-2 text-xs">
                   <Camera className="w-4 h-4 text-[#714B67]" />
@@ -1139,7 +1204,8 @@ export default function QuoteBuilderPage() {
                 <ImageIcon className="w-3 h-3" />
                 Photos will be attached to the quote and visible to assigned technician &amp; survey team.
               </p>
-            </div>
+              </div>
+            )}
 
             {isOutOfCapacityBounds && (
               <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-bold flex items-center gap-2">
@@ -1160,8 +1226,77 @@ export default function QuoteBuilderPage() {
           </form>
         </div>
 
-        {/* Right 5 cols: Quotation History & Downloads */}
-        <div className="lg:col-span-5 space-y-4">
+        {/* Quote summary and history */}
+        <div className="xl:col-span-4 space-y-5 xl:sticky xl:top-5">
+          <div className="rounded-3xl bg-white border border-[#EBDCE7] shadow-lg shadow-[#714B67]/10 overflow-hidden">
+            <div className="px-5 py-4 bg-gradient-to-r from-[#F5EDF3] to-white border-b border-[#EBDCE7]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider font-black text-[#b886ad]">Live proposal summary</p>
+                  <h2 className="text-lg font-black text-[#241621] mt-1">Quote at a glance</h2>
+                </div>
+                <Calculator className="w-5 h-5 text-[#714B67]" />
+              </div>
+            </div>
+            <div className="p-5 space-y-4 text-sm">
+              <div className="rounded-2xl bg-[#FAF6F9] border border-[#EBDCE7] p-3.5">
+                <p className="text-[10px] uppercase tracking-wider font-black text-[#b886ad]">Customer</p>
+                <p className="font-black text-[#241621] mt-1 truncate">
+                  {approvedLeads.find((lead) => lead.id === selectedLeadId)?.contactName || 'Select an approved lead'}
+                </p>
+                <p className="text-xs text-[#714B67] mt-0.5">
+                  {capacityKw || '—'} kW · {bomLines.length} BOM components
+                </p>
+              </div>
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between text-[#714B67]">
+                  <span>Subtotal</span><strong>₹{subtotal.toLocaleString()}</strong>
+                </div>
+                <div className="flex items-center justify-between text-[#714B67]">
+                  <span>GST (18%)</span><strong>₹{gstAmount.toLocaleString()}</strong>
+                </div>
+                <div className="flex items-center justify-between text-emerald-700">
+                  <span>Estimated subsidy</span><strong>- ₹{Number(subsidyAmount || 0).toLocaleString()}</strong>
+                </div>
+                <div className="pt-3 border-t border-[#EBDCE7] flex items-end justify-between">
+                  <span className="font-black text-[#241621]">Customer investment</span>
+                  <strong className="text-2xl font-black text-[#714B67]">₹{netCustomerPayable.toLocaleString()}</strong>
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Pricing updates live as you change capacity, products, discount or subsidy.</span>
+              </div>
+              <div className={`rounded-2xl border p-3 text-xs font-bold flex items-center gap-2 ${
+                selectedLeadId && !isOutOfCapacityBounds && bomLines.length > 0
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-amber-50 border-amber-200 text-amber-900'
+              }`}>
+                {selectedLeadId && !isOutOfCapacityBounds && bomLines.length > 0 ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Ready to issue this quotation.</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Select an approved lead and valid capacity to continue.</span>
+                  </>
+                )}
+              </div>
+              <button
+                type="submit"
+                form="quote-builder-form"
+                disabled={submitting || approvedLeads.length === 0 || isOutOfCapacityBounds || !selectedLeadId || bomLines.length === 0}
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#714b67] via-[#855278] to-[#714b67] hover:opacity-95 text-white font-black text-sm shadow-lg shadow-[#714b67]/25 transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <FileCheck2 className="w-4 h-4 text-[#f09e38]" />
+                {submitting ? 'Generating proposal...' : 'Issue quotation'}
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-black text-[#241621] flex items-center gap-2">
               <FileSpreadsheet className="w-4 h-4 text-[#714B67]" /> Recent Quotations ({quotes.length})
@@ -1305,13 +1440,6 @@ export default function QuoteBuilderPage() {
                         )}
                       </button>
                     )}
-                    <button
-                      onClick={() => handleLoadQuoteForEditing(q)}
-                      className="flex items-center gap-1 text-[#714B67] hover:text-[#f09e38] font-bold text-[11px] transition cursor-pointer"
-                      title="Load quote products to customize"
-                    >
-                      <Sliders className="w-3 h-3 text-[#f09e38]" /> Customize
-                    </button>
                   </div>
 
                   {q.status !== 'CONVERTED' ? (
@@ -1333,6 +1461,22 @@ export default function QuoteBuilderPage() {
           </div>
         </div>
       </div>
+
+      <SolarProductCustomizerModal
+        isOpen={showCustomizeModal}
+        onClose={() => setShowCustomizeModal(false)}
+        catalogProducts={catalogProducts}
+        capacityKw={capacityKw}
+        setCapacityKw={setCapacityKw}
+        minCapacityKw={minKw}
+        maxCapacityKw={maxKw}
+        dynamicPresets={dynamicPresets}
+        currentBomLines={bomLines}
+        activeSurvey={activeSurvey}
+        selectedLead={approvedLeads.find((l) => l.id === selectedLeadId)}
+        onApplyCustomization={handleApplyCustomization}
+        activeTabDefault={activeCustomizerTab}
+      />
 
       {/* Modal: Add Custom Component from Catalog */}
       {showAddProductModal && (
@@ -1429,23 +1573,6 @@ export default function QuoteBuilderPage() {
           </div>
         </div>
       )}
-
-      {/* Modal: Solar Hardware Customizer Studio for Customer */}
-      <SolarProductCustomizerModal
-        isOpen={showCustomizeModal}
-        onClose={() => setShowCustomizeModal(false)}
-        catalogProducts={catalogProducts}
-        capacityKw={capacityKw}
-        setCapacityKw={setCapacityKw}
-        minCapacityKw={minKw}
-        maxCapacityKw={maxKw}
-        dynamicPresets={dynamicPresets}
-        currentBomLines={bomLines}
-        activeSurvey={activeSurvey}
-        selectedLead={approvedLeads.find((l) => l.id === selectedLeadId)}
-        onApplyCustomization={handleApplyCustomization}
-        activeTabDefault={activeCustomizerTab}
-      />
 
       {/* Modal: Swap Single Product in BOM */}
       <SwapProductModal

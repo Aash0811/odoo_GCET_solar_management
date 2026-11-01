@@ -29,9 +29,17 @@ function enrichOrderFinancials(order) {
   };
 }
 
-async function getOrders(companyId, filters = {}) {
+function customerIdentityScope(user) {
+  if (!user || user.role !== "CUSTOMER") return {};
+  const identity = [];
+  if (user.email) identity.push({ email: user.email });
+  if (user.phone) identity.push({ phone: user.phone });
+  return { customer: { OR: identity } };
+}
+
+async function getOrders(companyId, filters = {}, user = null) {
   const { status, customerId, q, search, page, limit } = filters;
-  const where = { companyId };
+  const where = { companyId, ...customerIdentityScope(user) };
 
   if (status) where.status = status;
   if (customerId) where.customerId = customerId;
@@ -110,9 +118,9 @@ async function getOrders(companyId, filters = {}) {
   return enriched;
 }
 
-async function getOrderById(companyId, id) {
+async function getOrderById(companyId, id, user = null) {
   const order = await prisma.salesOrder.findFirst({
-    where: { id, companyId },
+    where: { id, companyId, ...customerIdentityScope(user) },
     include: {
       customer: true,
       quote: {
@@ -293,24 +301,43 @@ async function createOrderFromQuote(companyId, data, actorId, req = null) {
 //   2. Installation Job on crew schedule
 //   3. Project/Job-costing record
 // ─────────────────────────────────────────────────────────────
-async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId, req = null) {
-  const order = await getOrderById(companyId, orderId);
+async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId, req = null, user = null) {
+  const order = await getOrderById(companyId, orderId, user);
+  const existingPayment = paymentData.paymentId
+    ? await prisma.payment.findFirst({
+        where: { id: paymentData.paymentId, orderId, companyId },
+      })
+    : null;
+
+  if (paymentData.paymentId && !existingPayment) {
+    const error = new Error("Payment record not found.");
+    error.statusCode = 404;
+    throw error;
+  }
 
   const creatorId =
     actorId ||
     order.createdById ||
     (await prisma.user.findFirst({ where: { companyId } }))?.id;
 
-  const paymentAmount = Number(paymentData.amount);
-  const existingTotalPaid = Number(order.totalPaid || 0);
+  const paymentAmount = Number(existingPayment?.amount ?? paymentData.amount);
+  const existingTotalPaid =
+    Number(order.totalPaid || 0) -
+    (existingPayment?.status === "COMPLETED" && existingPayment.isVerified
+      ? paymentAmount
+      : 0);
   const newTotalPaid = existingTotalPaid + paymentAmount;
   const orderTotal = Number(order.totalAmount);
   const minAdvanceAmount = Number(order.minAdvanceAmount);
   const isAdvanceSatisfied = newTotalPaid >= minAdvanceAmount || newTotalPaid >= orderTotal;
 
   // Generate unique sequential receipt number
-  const paymentCount = await prisma.payment.count({ where: { companyId } });
-  const receiptNumber = `REC-${new Date().getFullYear()}-${String(paymentCount + 1).padStart(4, "0")}`;
+  const paymentCount = existingPayment
+    ? null
+    : await prisma.payment.count({ where: { companyId } });
+  const receiptNumber =
+    existingPayment?.receiptNumber ||
+    `REC-${new Date().getFullYear()}-${String(paymentCount + 1).padStart(4, "0")}`;
 
   const isDummy = paymentData.method === 'DUMMY';
   const transactionRef =
@@ -323,22 +350,63 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
     (isDummy ? 'Instant Dummy Payment (Simulation Mode)' : null);
 
   return await prisma.$transaction(async (tx) => {
-    // 1. Create Payment record
-    const payment = await tx.payment.create({
-      data: {
-        companyId,
-        orderId,
-        amount: paymentAmount,
-        method: paymentData.method,
-        transactionRef,
-        notes,
-        receiptNumber,
-        status: "COMPLETED",
-        isVerified: true,
-        verifiedById: creatorId,
-        verifiedAt: new Date(),
-      },
-    });
+    // Customer submissions remain pending until an accountant verifies them.
+    let payment = existingPayment;
+    if (existingPayment && paymentData.verify) {
+      payment = await tx.payment.update({
+        where: { id: existingPayment.id },
+        data: {
+          status: "COMPLETED",
+          isVerified: true,
+          verifiedById: actorId,
+          verifiedAt: new Date(),
+          notes: paymentData.verificationNotes
+            ? `${existingPayment.notes ? existingPayment.notes + " | " : ""}Verified: ${paymentData.verificationNotes}`
+            : existingPayment.notes,
+        },
+      });
+    } else if (!existingPayment) {
+      payment = await tx.payment.create({
+          data: {
+            companyId,
+            orderId,
+            amount: paymentAmount,
+            method: paymentData.method,
+            transactionRef,
+            notes,
+            receiptNumber,
+            status: "PENDING",
+            isVerified: false,
+          },
+        });
+    }
+
+    if (!existingPayment) {
+      await recordAuditLog(
+        {
+          companyId,
+          actorId: creatorId,
+          action: "PAYMENT_RECORDED",
+          entityType: "Payment",
+          entityId: payment.id,
+          newValue: {
+            amount: payment.amount,
+            method: payment.method,
+            receiptNumber,
+            status: "PENDING",
+          },
+          req,
+        },
+        tx
+      );
+
+      return {
+        order: enrichOrderFinancials(order),
+        payment,
+        advanceSatisfied: false,
+        message: `Payment submitted for accountant verification (Receipt: ${receiptNumber}). The order will be released after verification.`,
+      };
+    }
 
     // 2. Update Milestone status based on cumulative total paid
     const milestones = await tx.paymentMilestone.findMany({
@@ -402,6 +470,19 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
 
     // 4. If order is already CONFIRMED or later stage, just record payment
     if (order.status !== "PENDING_PAYMENT") {
+      const shouldCloseOrder =
+        newTotalPaid >= orderTotal &&
+        order.status === "DELIVERED";
+      const finalOrder = shouldCloseOrder
+        ? await tx.salesOrder.update({
+            where: { id: orderId },
+            data: {
+              status: "COMPLETED",
+              completedAt: new Date(),
+            },
+          })
+        : order;
+
       await recordAuditLog(
         {
           companyId,
@@ -416,10 +497,12 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
       );
 
       return {
-        order: enrichOrderFinancials({ ...order, totalPaid: newTotalPaid }),
+        order: enrichOrderFinancials({ ...finalOrder, totalPaid: newTotalPaid }),
         payment,
         advanceSatisfied: true,
-        message: `Payment of ₹${paymentAmount.toLocaleString("en-IN")} recorded successfully (Receipt: ${receiptNumber}).`,
+        message: shouldCloseOrder
+          ? `Final payment verified. Order ${order.orderNumber} is now financially closed.`
+          : `Payment of ₹${paymentAmount.toLocaleString("en-IN")} recorded successfully (Receipt: ${receiptNumber}).`,
       };
     }
 
@@ -506,90 +589,6 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
       },
     });
 
-    // Automation 2.1: Automatically generate Service & Hardware Warranties according to Installation Date
-    const quoteLines = order.quote?.lines || [];
-    const warrantiesCreated = [];
-
-    for (const line of quoteLines) {
-      if (!line.productId) continue;
-      const product = line.product || (await tx.product.findUnique({ where: { id: line.productId } }));
-      if (!product || !product.isSerialTracked) continue;
-
-      const qty = Math.max(1, Math.round(Number(line.quantity || 1)));
-      const warrantyYears = product.warrantyYears || 2;
-      const startDate = scheduledDate;
-      const endDate = new Date(startDate.getTime() + warrantyYears * 365 * 86400000);
-
-      // Check existing serials for this order and product
-      let assignedSerials = await tx.serialNumber.findMany({
-        where: { orderId: order.id, productId: product.id },
-      });
-
-      // If fewer serials assigned than required, allocate from available stock or auto-reserve sequential serials
-      if (assignedSerials.length < qty) {
-        const needed = qty - assignedSerials.length;
-        const availableStockSerials = await tx.serialNumber.findMany({
-          where: {
-            companyId,
-            productId: product.id,
-            orderId: null,
-            status: "IN_STOCK",
-          },
-          take: needed,
-        });
-
-        for (const avail of availableStockSerials) {
-          const updated = await tx.serialNumber.update({
-            where: { id: avail.id },
-            data: {
-              orderId: order.id,
-              customerId: order.customerId,
-              status: "RESERVED",
-            },
-          });
-          assignedSerials.push(updated);
-        }
-
-        const stillNeeded = qty - assignedSerials.length;
-        for (let i = 0; i < stillNeeded; i++) {
-          const seq = Date.now().toString().slice(-6) + Math.floor(Math.random() * 1000).toString().padStart(3, "0");
-          const autoSerial = `${product.sku}-${seq}`;
-          const created = await tx.serialNumber.create({
-            data: {
-              companyId,
-              productId: product.id,
-              orderId: order.id,
-              customerId: order.customerId,
-              serial: autoSerial,
-              status: "RESERVED",
-            },
-          });
-          assignedSerials.push(created);
-        }
-      }
-
-      // Generate or update active service warranty starting on the installation date
-      for (const sn of assignedSerials) {
-        const warranty = await tx.warranty.upsert({
-          where: { serialNumberId: sn.id },
-          update: {
-            startDate,
-            endDate,
-            status: "ACTIVE",
-          },
-          create: {
-            companyId,
-            customerId: order.customerId,
-            serialNumberId: sn.id,
-            status: "ACTIVE",
-            startDate,
-            endDate,
-          },
-        });
-        warrantiesCreated.push(warranty);
-      }
-    }
-
     // Automation 3: Automatically create initial Project/Job-costing record
     const bomCost = (order.quote?.lines || []).reduce(
       (sum, l) => sum + Number(l.quantity) * Number(l.unitCost || 0),
@@ -637,11 +636,11 @@ async function recordPaymentAndConfirm(companyId, orderId, paymentData, actorId,
     } else {
       await notifyRole(
         companyId,
-        "TECHNICIAN",
+        "ADMIN",
         {
           type: "JOB_CREATED",
-          title: "New Installation Job Ready",
-          message: `Job ${jobNumber} (${order.capacityKw} kW) scheduled for ${scheduledDate.toLocaleDateString()}. Pending technician assignment.`,
+          title: "Installation Job Requires Technician Assignment",
+          message: `Job ${jobNumber} (${order.capacityKw} kW) for customer ${order.customer?.name} is ready for installation. Please assign a technician.`,
           entityType: "InstallationJob",
           entityId: installationJob.id,
         },
@@ -703,30 +702,32 @@ async function verifyPayment(companyId, orderId, paymentId, actorId, data = {}, 
     throw error;
   }
 
-  const updated = await prisma.payment.update({
-    where: { id: paymentId },
-    data: {
-      isVerified: true,
-      verifiedById: actorId,
-      verifiedAt: new Date(),
-      notes: data.notes ? `${payment.notes ? payment.notes + " | " : ""}Verified: ${data.notes}` : payment.notes,
-    },
-  });
+  if (payment.status !== "PENDING" || payment.isVerified) {
+    const error = new Error("Only pending payments can be verified.");
+    error.statusCode = 400;
+    throw error;
+  }
 
-  await recordAuditLog(
-    {
-      companyId,
-      actorId,
-      action: "UPDATE",
-      entityType: "Payment",
-      entityId: paymentId,
-      newValue: { isVerified: true, verifiedById: actorId },
-      metadata: { action: "PAYMENT_VERIFIED" },
-      req,
-    }
+  const result = await recordPaymentAndConfirm(
+    companyId,
+    orderId,
+    { paymentId, verify: true, verificationNotes: data.notes },
+    actorId,
+    req
   );
 
-  return updated;
+  await recordAuditLog({
+    companyId,
+    actorId,
+    action: "UPDATE",
+    entityType: "Payment",
+    entityId: paymentId,
+    newValue: { isVerified: true, verifiedById: actorId },
+    metadata: { action: "PAYMENT_VERIFIED" },
+    req,
+  });
+
+  return result;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -780,7 +781,7 @@ async function sendPaymentReminder(companyId, orderId, actorId, data = {}, req =
 // ─────────────────────────────────────────────────────────────
 // PDF Payment Receipt Generator
 // ─────────────────────────────────────────────────────────────
-async function getPaymentReceiptPdfBuffer(companyId, orderId, paymentId) {
+async function getPaymentReceiptPdfBuffer(companyId, orderId, paymentId, user = null) {
   const payment = await prisma.payment.findFirst({
     where: { id: paymentId, orderId, companyId },
     include: { milestone: true },

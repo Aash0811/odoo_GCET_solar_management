@@ -5,7 +5,7 @@ const authenticate = require("../../middleware/auth");
 const companyScope = require("../../middleware/companyScope");
 const requireRole = require("../../middleware/requireRole");
 const validate = require("../../middleware/validate");
-const { createCostEntrySchema, updateSubsidySchema } = require("./schema");
+const { createCostEntrySchema, updateSubsidySchema, recordInvoicePaymentSchema } = require("./schema");
 
 router.use(authenticate);
 router.use(companyScope);
@@ -19,5 +19,11 @@ router.post("/cost-entries", requireRole("ADMIN", "ACCOUNTANT", "SALESMAN"), val
 
 router.get("/invoices", requireRole("ADMIN", "ACCOUNTANT", "SUPPORT", "SALESMAN", "CUSTOMER"), financeController.listInvoices);
 router.get("/invoices/:id/pdf", requireRole("ADMIN", "ACCOUNTANT", "SUPPORT", "SALESMAN", "CUSTOMER"), financeController.downloadInvoicePdf);
+router.post(
+  "/invoices/:id/payments",
+  requireRole("ADMIN", "ACCOUNTANT", "CUSTOMER"),
+  validate(recordInvoicePaymentSchema),
+  financeController.recordInvoicePayment
+);
 
 module.exports = router;

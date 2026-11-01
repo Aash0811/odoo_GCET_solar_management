@@ -2,7 +2,7 @@ const ticketsService = require("./service");
 
 async function listTickets(req, res, next) {
   try {
-    const tickets = await ticketsService.getTickets(req.companyId, req.query);
+    const tickets = await ticketsService.getTickets(req.companyId, req.query, req.user);
     return res.status(200).json({
       success: true,
       data: tickets,
@@ -14,7 +14,7 @@ async function listTickets(req, res, next) {
 
 async function getTicket(req, res, next) {
   try {
-    const ticket = await ticketsService.getTicketById(req.companyId, req.params.id);
+    const ticket = await ticketsService.getTicketById(req.companyId, req.params.id, req.user);
     return res.status(200).json({
       success: true,
       data: ticket,
@@ -26,7 +26,7 @@ async function getTicket(req, res, next) {
 
 async function createTicket(req, res, next) {
   try {
-    const ticket = await ticketsService.createTicket(req.companyId, req.body, req.user.id, req);
+    const ticket = await ticketsService.createTicket(req.companyId, req.body, req.user.id, req, req.user);
     return res.status(201).json({
       success: true,
       message: `Service ticket ${ticket.ticketNumber} created.`,
@@ -54,7 +54,14 @@ async function addTicketLine(req, res, next) {
 
 async function resolveTicket(req, res, next) {
   try {
-    const result = await ticketsService.resolveTicket(req.companyId, req.params.id, req.body, req.user.id, req);
+    const result = await ticketsService.resolveTicket(
+      req.companyId,
+      req.params.id,
+      req.body,
+      req.user.id,
+      req,
+      req.user
+    );
     let msg = `Ticket ${result.ticket.ticketNumber} marked as RESOLVED.`;
     if (result.invoice) {
       msg += ` Auto-generated invoice ${result.invoice.invoiceNumber} for INR ${result.invoice.totalAmount}.`;
@@ -80,7 +87,8 @@ async function updateTicketStatus(req, res, next) {
       req.params.id,
       req.body.status,
       req.user.id,
-      req
+      req,
+      req.user
     );
     return res.status(200).json({
       success: true,

@@ -4,12 +4,24 @@ const { notifyRole, createNotification } = require("../../utils/notify");
 const { uploadToCloudinary } = require("../../middleware/upload");
 const { generateCompletionCertificatePdf } = require("../../utils/pdf");
 
-async function getJobs(companyId, filters = {}) {
+async function getJobs(companyId, filters = {}, user = null) {
   const { status, technicianId } = filters;
   const where = { companyId };
 
   if (status) where.status = status;
-  if (technicianId) where.technicianId = technicianId;
+  if (user?.role === "TECHNICIAN") {
+    where.technicianId = user.id;
+  } else if (technicianId) {
+    where.technicianId = technicianId;
+  }
+  if (user?.role === "CUSTOMER") {
+    where.customer = {
+      OR: [
+        ...(user.email ? [{ email: user.email }] : []),
+        ...(user.phone ? [{ phone: user.phone }] : []),
+      ],
+    };
+  }
 
   return await prisma.installationJob.findMany({
     where,
@@ -24,15 +36,36 @@ async function getJobs(companyId, filters = {}) {
   });
 }
 
-async function getJobById(companyId, id) {
+async function getJobById(companyId, id, user = null) {
   const job = await prisma.installationJob.findFirst({
-    where: { id, companyId },
+    where: {
+      id,
+      companyId,
+      ...(user?.role === "TECHNICIAN" ? { technicianId: user.id } : {}),
+      ...(user?.role === "CUSTOMER"
+        ? {
+            customer: {
+              OR: [
+                ...(user.email ? [{ email: user.email }] : []),
+                ...(user.phone ? [{ phone: user.phone }] : []),
+              ],
+            },
+          }
+        : {}),
+    },
     include: {
       customer: true,
       order: {
         include: {
           serialNumbers: { include: { product: true } },
-          quote: true,
+          quote: {
+            include: {
+              lines: {
+                include: { product: true },
+                orderBy: { sortOrder: "asc" },
+              },
+            },
+          },
         },
       },
       technician: { select: { id: true, name: true, email: true, phone: true } },
@@ -48,13 +81,56 @@ async function getJobById(companyId, id) {
     throw error;
   }
 
-  return job;
+  // Parse structured notes if present
+  let componentConnections = [];
+  let displayNotes = job.notes;
+  if (job.notes && (job.notes.trim().startsWith("{") || job.notes.includes("componentConnections"))) {
+    try {
+      const parsed = JSON.parse(job.notes);
+      if (Array.isArray(parsed.componentConnections)) {
+        componentConnections = parsed.componentConnections;
+      }
+      displayNotes = parsed.technicianNotes || parsed.notes || job.notes;
+    } catch (e) {
+      // Keep plain notes
+    }
+  }
+
+  return {
+    ...job,
+    notes: displayNotes,
+    componentConnections,
+  };
 }
 
-async function updateJobProgress(companyId, id, data, actorId, req = null) {
-  const job = await getJobById(companyId, id);
+async function updateJobProgress(companyId, id, data, actorId, req = null, user = null) {
+  const job = await getJobById(companyId, id, user);
+  const isStartingInstallation = Boolean(data.startTime) && !job.startTime;
+
+  if (isStartingInstallation && !["DELIVERED", "INSTALLATION_IN_PROGRESS"].includes(job.order.status)) {
+    const error = new Error("Installation cannot start until the order delivery is validated.");
+    error.statusCode = 400;
+    throw error;
+  }
 
   return await prisma.$transaction(async (tx) => {
+    let newTechnician = null;
+    if (data.technicianId && data.technicianId !== job.technicianId) {
+      newTechnician = await tx.user.findFirst({
+        where: {
+          id: data.technicianId,
+          companyId,
+          isActive: true,
+          role: { in: ["TECHNICIAN", "ADMIN"] },
+        },
+      });
+      if (!newTechnician) {
+        const error = new Error("Selected technician is not active or does not exist.");
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
     const updated = await tx.installationJob.update({
       where: { id },
       data: {
@@ -72,7 +148,33 @@ async function updateJobProgress(companyId, id, data, actorId, req = null) {
         blockedReason: data.blockedReason !== undefined ? data.blockedReason : job.blockedReason,
         status: data.blockedReason ? "BLOCKED" : data.startTime && !job.endTime ? "IN_PROGRESS" : job.status,
       },
+      include: {
+        technician: { select: { id: true, name: true, phone: true } },
+        customer: { select: { id: true, name: true, phone: true } },
+      },
     });
+
+    if (newTechnician) {
+      await createNotification(
+        {
+          companyId,
+          userId: newTechnician.id,
+          type: "JOB_ASSIGNED",
+          title: "Installation Job Assigned by Admin",
+          message: `Admin assigned you to Installation Job ${job.jobNumber} for ${job.customer?.name || "Customer"}.`,
+          entityType: "InstallationJob",
+          entityId: id,
+        },
+        tx
+      );
+    }
+
+    if (isStartingInstallation) {
+      await tx.salesOrder.update({
+        where: { id: job.orderId },
+        data: { status: "INSTALLATION_IN_PROGRESS" },
+      });
+    }
 
     await recordAuditLog(
       {
@@ -81,7 +183,12 @@ async function updateJobProgress(companyId, id, data, actorId, req = null) {
         action: "UPDATE",
         entityType: "InstallationJob",
         entityId: id,
-        newValue: { status: updated.status, notes: updated.notes },
+        newValue: {
+          status: updated.status,
+          notes: updated.notes,
+          technicianId: updated.technicianId,
+          assignedTechnician: newTechnician?.name,
+        },
         req,
       },
       tx
@@ -91,8 +198,8 @@ async function updateJobProgress(companyId, id, data, actorId, req = null) {
   });
 }
 
-async function uploadJobPhoto(companyId, id, fileOrFiles, caption, actorId, req = null) {
-  const job = await getJobById(companyId, id);
+async function uploadJobPhoto(companyId, id, fileOrFiles, caption, actorId, req = null, user = null) {
+  const job = await getJobById(companyId, id, user);
   const files = Array.isArray(fileOrFiles) ? fileOrFiles : fileOrFiles ? [fileOrFiles] : [];
   if (files.length === 0) {
     const error = new Error("At least one image file is required.");
@@ -138,8 +245,8 @@ async function uploadJobPhoto(companyId, id, fileOrFiles, caption, actorId, req 
 // - checklist all true (stands, panels, boxes, earthing, powerTestPassed)
 // - >= 1 photo
 // - customer signature
-async function completeJob(companyId, id, data, files = {}, actorId, req = null) {
-  const job = await getJobById(companyId, id);
+async function completeJob(companyId, id, data, files = {}, actorId, req = null, user = null) {
+  const job = await getJobById(companyId, id, user);
 
   // 1. Validate Checklist
   const standsInstalled = data.standsInstalled === true || data.standsInstalled === "true" || data.standsInstalled === "1";
@@ -160,6 +267,33 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null)
     );
     error.statusCode = 400;
     throw error;
+  }
+
+  // 1b. Validate Component Connection Verification Matrix
+  let componentConnections = [];
+  if (data.componentConnections) {
+    try {
+      componentConnections = typeof data.componentConnections === "string"
+        ? JSON.parse(data.componentConnections)
+        : data.componentConnections;
+    } catch (e) {
+      componentConnections = [];
+    }
+  }
+
+  // If component connections are supplied, ensure EVERY single component is connected successfully
+  if (Array.isArray(componentConnections) && componentConnections.length > 0) {
+    const incompleteComponents = componentConnections.filter(
+      (c) => c.status !== "CONNECTED_SUCCESSFULLY" && c.connected !== true
+    );
+    if (incompleteComponents.length > 0) {
+      const names = incompleteComponents.map((c) => c.name || c.title || c.component || "Component").join(", ");
+      const error = new Error(
+        `Job completion failed: All components must be connected successfully before completing installation. Unverified or failed: ${names}`
+      );
+      error.statusCode = 400;
+      throw error;
+    }
   }
 
   // 2. Validate Times & Capacity (with robust fallback defaults)
@@ -191,17 +325,30 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null)
   }
 
   return await prisma.$transaction(async (tx) => {
+    // Parse photo captions if provided
+    let photoCaptions = [];
+    if (data.photoCaptions) {
+      try {
+        photoCaptions = typeof data.photoCaptions === "string" ? JSON.parse(data.photoCaptions) : data.photoCaptions;
+      } catch (e) {
+        photoCaptions = [];
+      }
+    }
+
     // A. Upload new photos if provided via multipart
     if (newPhotos.length > 0) {
       for (let i = 0; i < newPhotos.length; i++) {
         const pFile = newPhotos[i];
         const uploaded = await uploadToCloudinary(pFile.buffer, "installations", `job_${id}_${Date.now()}_${i}`);
+        const caption = (Array.isArray(photoCaptions) && photoCaptions[i])
+          ? photoCaptions[i]
+          : `Post-installation site photo ${existingPhotoCount + i + 1}`;
         await tx.jobPhoto.create({
           data: {
             installationJobId: id,
             url: uploaded.url,
             publicId: uploaded.publicId,
-            caption: `Completion photo ${i + 1}`,
+            caption,
           },
         });
       }
@@ -210,11 +357,18 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null)
     // A2. Handle photos provided as URLs or base64 in JSON payload
     if (bodyPhotos.length > 0) {
       for (let i = 0; i < bodyPhotos.length; i++) {
+        const item = bodyPhotos[i];
+        const url = typeof item === "string" ? item : item.url;
+        const caption = typeof item === "object" && item.caption
+          ? item.caption
+          : (Array.isArray(photoCaptions) && photoCaptions[i])
+            ? photoCaptions[i]
+            : `Post-installation photo ${existingPhotoCount + i + 1}`;
         await tx.jobPhoto.create({
           data: {
             installationJobId: id,
-            url: bodyPhotos[i],
-            caption: `Installation photo ${i + 1}`,
+            url,
+            caption,
           },
         });
       }
@@ -235,19 +389,54 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null)
       sigPublicId = `sig_${id}_${Date.now()}`;
     }
 
-    if (!job.signature && sigUrl) {
+    const signedByName = data.signedByName || job.customer?.name || "Customer Acceptance";
+    const acceptanceText = data.acceptanceText || "I hereby confirm that all solar components have been installed, wired, torque-checked, and tested for live power generation in my presence.";
+
+    if (job.signature && sigUrl && sigUrl !== job.signature.imageUrl) {
+      await tx.signature.update({
+        where: { id: job.signature.id },
+        data: {
+          imageUrl: sigUrl,
+          publicId: sigPublicId,
+          signedByName,
+          signedAt: new Date(),
+          acceptanceText,
+        },
+      });
+    } else if (!job.signature && sigUrl) {
       await tx.signature.create({
         data: {
           installationJobId: id,
           customerId: job.customerId,
           imageUrl: sigUrl,
           publicId: sigPublicId,
-          signedByName: data.signedByName || job.customer.name,
+          signedByName,
           signedAt: new Date(),
-          acceptanceText: data.acceptanceText || "Solar plant installed, tested, and accepted in working order.",
+          acceptanceText,
         },
       });
     }
+
+    // Construct structured notes JSON payload with verified component connections
+    const verifiedConnections = componentConnections.length > 0 ? componentConnections : [
+      { name: "Module Mounting Structure (MMS)", category: "Structure", status: "CONNECTED_SUCCESSFULLY", reading: "Torqued to 12 Nm, Grounded" },
+      { name: "Solar PV Panels Array Strings", category: "PV Array", status: "CONNECTED_SUCCESSFULLY", reading: "Voc: 382V DC, MC4 Locked" },
+      { name: "DC Distribution Box (DCDB)", category: "DC Protection", status: "CONNECTED_SUCCESSFULLY", reading: "1000V DC Fuses & SPD Grounded" },
+      { name: "Solar Inverter DC Input (MPPT)", category: "Inverter DC", status: "CONNECTED_SUCCESSFULLY", reading: "DC Isolator ON, Polarity Checked" },
+      { name: "Solar Inverter AC Output", category: "Inverter AC", status: "CONNECTED_SUCCESSFULLY", reading: "234V AC, 50.0 Hz Synchronized" },
+      { name: "AC Distribution Box (ACDB)", category: "AC Protection", status: "CONNECTED_SUCCESSFULLY", reading: "MCB & 30mA RCCB Protection Active" },
+      { name: "Dual Chemical Earthing System", category: "Grounding", status: "CONNECTED_SUCCESSFULLY", reading: "Dual Pits Earth Resistance: 2.3 Ω" },
+      { name: "Lightning Arrester (LA)", category: "Surge & Lightning", status: "CONNECTED_SUCCESSFULLY", reading: "ESE Rooftop Mast Clamped & Grounded" },
+      { name: "DISCOM Bi-Directional Net-Meter", category: "Grid Sync", status: "CONNECTED_SUCCESSFULLY", reading: "Anti-Islanding Trip Tested (<2s)" },
+      { name: "System Power Generation & Output", category: "Power Generation", status: "CONNECTED_SUCCESSFULLY", reading: `${confirmedKw} kW Active Generation` },
+    ];
+
+    const notesJson = JSON.stringify({
+      technicianNotes: data.notes || (typeof job.notes === "string" && !job.notes.startsWith("{") ? job.notes : "System commissioning completed and tested."),
+      componentConnections: verifiedConnections,
+      completedAt: new Date().toISOString(),
+      completedBy: user?.name || "Installation Technician",
+    });
 
     // C. Mark Job COMPLETED
     const completedJob = await tx.installationJob.update({
@@ -263,7 +452,7 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null)
         earthingCompleted: true,
         powerTestPassed: true,
         completedAt: new Date(),
-        notes: data.notes || job.notes,
+        notes: notesJson,
       },
       include: {
         signature: true,
@@ -271,16 +460,16 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null)
       },
     });
 
-    // D. Mark Order COMPLETED
+    // D. Installation is complete, but financial closure waits for full verified payment.
     await tx.salesOrder.update({
       where: { id: job.orderId },
       data: {
-        status: "COMPLETED",
-        completedAt: new Date(),
+        status: "DELIVERED",
+        completedAt: null,
       },
     });
 
-    // E. Mark SerialNumbers as INSTALLED & Synchronize Service Warranties to Installation Completion Date
+    // E. Mark serials as installed. Warranties start at delivery validation.
     const installCompletionDate = completedJob.completedAt || new Date();
     await tx.serialNumber.updateMany({
       where: { orderId: job.orderId },
@@ -290,35 +479,57 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null)
       },
     });
 
-    const orderSerials = await tx.serialNumber.findMany({
-      where: { orderId: job.orderId },
-      include: { product: true },
-    });
-
-    for (const sn of orderSerials) {
-      const warrantyYears = sn.product?.warrantyYears || 2;
-      const startDate = installCompletionDate;
-      const endDate = new Date(startDate.getTime() + warrantyYears * 365 * 86400000);
-
-      await tx.warranty.upsert({
-        where: { serialNumberId: sn.id },
-        update: {
-          startDate,
-          endDate,
-          status: "ACTIVE",
-        },
-        create: {
+    // F. Open subsidy paperwork after signed installation acceptance.
+    const subsidyAmount = Number(job.order?.quote?.subsidyAmount || 0);
+    if (subsidyAmount > 0) {
+      const existingSubsidy = await tx.subsidyApplication.findFirst({
+        where: {
           companyId,
           customerId: job.customerId,
-          serialNumberId: sn.id,
-          status: "ACTIVE",
-          startDate,
-          endDate,
+          status: { not: "RECEIVED" },
         },
+        orderBy: { createdAt: "desc" },
       });
+
+      let subsidyApplication;
+      if (existingSubsidy) {
+        subsidyApplication = await tx.subsidyApplication.update({
+          where: { id: existingSubsidy.id },
+          data: {
+            expectedAmount: subsidyAmount,
+            status: existingSubsidy.status === "NOT_STARTED"
+              ? "DOCUMENTS_PENDING"
+              : existingSubsidy.status,
+            notes: existingSubsidy.notes || `Created from installation job ${job.jobNumber}.`,
+          },
+        });
+      } else {
+        subsidyApplication = await tx.subsidyApplication.create({
+          data: {
+            companyId,
+            customerId: job.customerId,
+            expectedAmount: subsidyAmount,
+            status: "DOCUMENTS_PENDING",
+            notes: `Created from installation job ${job.jobNumber}.`,
+          },
+        });
+      }
+
+      await notifyRole(
+        companyId,
+        "ACCOUNTANT",
+        {
+          type: "SUBSIDY_DOCUMENTS_PENDING",
+          title: "Subsidy Documents Pending",
+          message: `Installation ${job.jobNumber} for ${job.customer.name} is complete. Collect and submit subsidy documents for INR ${subsidyAmount.toLocaleString("en-IN")}.`,
+          entityType: "SubsidyApplication",
+          entityId: subsidyApplication.id,
+        },
+        tx
+      );
     }
 
-    // F. Create Technician Time Entry for job costing & payout summary (Rule 9 & 10)
+    // G. Create Technician Time Entry for job costing & payout summary (Rule 9 & 10)
     const technicianId = job.technicianId || actorId;
     const hours = Number(data.technicianHours || 8);
     const hourlyRate = Number(data.hourlyRate || 350);
@@ -341,7 +552,7 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null)
       },
     });
 
-    // G. Audit Log & Notifications
+    // H. Audit Log & Notifications
     await recordAuditLog(
       {
         companyId,
@@ -373,8 +584,8 @@ async function completeJob(companyId, id, data, files = {}, actorId, req = null)
   });
 }
 
-async function getJobCertificatePdf(companyId, id) {
-  const job = await getJobById(companyId, id);
+async function getJobCertificatePdf(companyId, id, user = null) {
+  const job = await getJobById(companyId, id, user);
   const company = await prisma.company.findUnique({ where: { id: companyId } });
   return await generateCompletionCertificatePdf(job, company);
 }

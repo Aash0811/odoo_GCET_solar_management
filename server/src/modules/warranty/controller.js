@@ -13,7 +13,7 @@ async function searchWarranties(req, res, next) {
     const results = await warrantyService.searchWarranties(req.companyId, query, {
       page: req.query.page,
       limit: req.query.limit,
-    });
+    }, req.user);
     return res.status(200).json({
       success: true,
       data: results,

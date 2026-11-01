@@ -27,7 +27,7 @@ async function getTechnicians(req, res, next) {
 
 async function getSurvey(req, res, next) {
   try {
-    const survey = await surveysService.getSurveyById(req.companyId, req.params.id);
+    const survey = await surveysService.getSurveyById(req.companyId, req.params.id, req.user);
     return res.status(200).json({
       success: true,
       data: survey,
@@ -59,7 +59,8 @@ async function submitSurvey(req, res, next) {
       req.body,
       files,
       req.user.id,
-      req
+      req,
+      req.user
     );
 
     return res.status(200).json({

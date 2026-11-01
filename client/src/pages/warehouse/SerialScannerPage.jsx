@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dispatchApi, inventoryApi, warehousesApi } from '../../api';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
 import {
@@ -201,7 +201,20 @@ export default function SerialScannerPage() {
         const html5QrCode = new Html5Qrcode('reader-universal-box');
         html5QrCodeRef.current = html5QrCode;
 
-        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+        const config = {
+          fps: 10,
+          qrbox: { width: 320, height: 140 },
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.CODE_93,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+          ],
+        };
 
         await html5QrCode.start(
           { facingMode: 'environment' },
@@ -240,7 +253,18 @@ export default function SerialScannerPage() {
 
     setIsDecodingFile(true);
     try {
-      const html5QrCode = new Html5Qrcode('reader-hidden-canvas');
+      const html5QrCode = new Html5Qrcode('reader-hidden-canvas', {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODE_93,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+        ],
+      });
       const decodedText = await html5QrCode.scanFile(file, true);
       html5QrCode.clear();
 

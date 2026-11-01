@@ -45,9 +45,18 @@ function sanitizeQuote(quote, userRole = "ADMIN") {
   };
 }
 
-async function getQuotes(companyId, filters = {}, userRole = "ADMIN") {
+function customerIdentityScope(user) {
+  if (!user || user.role !== "CUSTOMER") return {};
+  const identity = [];
+  if (user.email) identity.push({ email: user.email });
+  if (user.phone) identity.push({ phone: user.phone });
+  return { customer: { OR: identity } };
+}
+
+async function getQuotes(companyId, filters = {}, user = "ADMIN") {
   const { status, leadId, customerId } = filters;
-  const where = { companyId };
+  const userRole = typeof user === "string" ? user : user?.role;
+  const where = { companyId, ...customerIdentityScope(user) };
 
   if (status) where.status = status;
   if (leadId) where.leadId = leadId;
@@ -68,9 +77,10 @@ async function getQuotes(companyId, filters = {}, userRole = "ADMIN") {
   return quotes.map((q) => sanitizeQuote(q, userRole));
 }
 
-async function getQuoteById(companyId, id, userRole = "ADMIN") {
+async function getQuoteById(companyId, id, user = "ADMIN") {
+  const userRole = typeof user === "string" ? user : user?.role;
   const quote = await prisma.quote.findFirst({
-    where: { id, companyId },
+    where: { id, companyId, ...customerIdentityScope(user) },
     include: {
       customer: true,
       lead: true,
@@ -479,8 +489,10 @@ async function reviewDiscount(companyId, id, { approved, notes }, actorId, req =
 // ─────────────────────────────────────────────────────────────
 // Customer Accept Online with Digital Acceptance Record
 // ─────────────────────────────────────────────────────────────
-async function acceptQuote(companyId, idOrToken, acceptanceData = {}, req = null) {
-  const where = idOrToken.length === 32 ? { shareToken: idOrToken } : { id: idOrToken, companyId };
+async function acceptQuote(companyId, idOrToken, acceptanceData = {}, req = null, user = null) {
+  const where = idOrToken.length === 32
+    ? { shareToken: idOrToken }
+    : { id: idOrToken, companyId, ...customerIdentityScope(user) };
   const quote = await prisma.quote.findFirst({
     where,
     include: { lines: true },
@@ -607,8 +619,10 @@ async function acceptQuote(companyId, idOrToken, acceptanceData = {}, req = null
 // ─────────────────────────────────────────────────────────────
 // Customer Reject Online
 // ─────────────────────────────────────────────────────────────
-async function rejectQuote(companyId, idOrToken, { reason }, req = null) {
-  const where = idOrToken.length === 32 ? { shareToken: idOrToken } : { id: idOrToken, companyId };
+async function rejectQuote(companyId, idOrToken, { reason }, req = null, user = null) {
+  const where = idOrToken.length === 32
+    ? { shareToken: idOrToken }
+    : { id: idOrToken, companyId, ...customerIdentityScope(user) };
   const quote = await prisma.quote.findFirst({ where });
 
   if (!quote) {
@@ -684,8 +698,8 @@ async function updateQuoteStatus(companyId, id, newStatus, actorId, req = null) 
   });
 }
 
-async function getQuotePdfBuffer(companyId, id) {
-  const quote = await getQuoteById(companyId, id, "ADMIN");
+async function getQuotePdfBuffer(companyId, id, user = "ADMIN") {
+  const quote = await getQuoteById(companyId, id, user);
   const company = await prisma.company.findUnique({
     where: { id: companyId },
   });
@@ -743,8 +757,10 @@ async function uploadQuotePhoto(companyId, quoteId, files, caption, phase, actor
   return uploadedPhotos;
 }
 
-async function getQuotePhotos(companyId, quoteId) {
-  const quote = await prisma.quote.findFirst({ where: { id: quoteId, companyId } });
+async function getQuotePhotos(companyId, quoteId, user = null) {
+  const quote = await prisma.quote.findFirst({
+    where: { id: quoteId, companyId, ...customerIdentityScope(user) },
+  });
   if (!quote) {
     const err = new Error("Quote not found.");
     err.statusCode = 404;

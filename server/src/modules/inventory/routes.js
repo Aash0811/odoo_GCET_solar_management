@@ -7,6 +7,9 @@ const requireRole = require("../../middleware/requireRole");
 const validate = require("../../middleware/validate");
 const { createProductSchema, updateProductSchema } = require("./schema");
 
+// Public Packages endpoint for Website (No auth required)
+router.get("/public/packages", inventoryController.listPublicPackages);
+
 router.use(authenticate);
 router.use(companyScope);
 

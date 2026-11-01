@@ -72,6 +72,7 @@ export function AuthProvider({ children }) {
       ACCOUNTANT: 'accountant@sunpower.com',
       WAREHOUSE: 'warehouse@sunpower.com',
       TECHNICIAN: 'tech@sunpower.com',
+      DELIVERY_AGENT: 'delivery@sunpower.com',
       SUPPORT: 'support@sunpower.com',
       CUSTOMER: 'customer@sunpower.com',
     };

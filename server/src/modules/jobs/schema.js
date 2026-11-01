@@ -13,6 +13,7 @@ const updateJobProgressSchema = z.object({
   powerTestPassed: z.boolean().optional(),
   notes: z.string().optional().nullable(),
   blockedReason: z.string().optional().nullable(),
+  componentConnections: z.any().optional(),
 });
 
 const completeJobSchema = z.object({
@@ -38,6 +39,12 @@ const completeJobSchema = z.object({
   signedByName: z.string().min(2, "Customer signee name is required"),
   acceptanceText: z.string().optional().nullable(),
   signatureImageBase64: z.string().optional().nullable(),
+  signatureRole: z.string().optional().nullable(),
+  componentConnections: z.any().optional(),
+  photoCaptions: z.any().optional(),
+  photoUrls: z.any().optional(),
+  photoUrl: z.any().optional(),
+  photoBase64: z.any().optional(),
   technicianHours: z.coerce.number().positive().optional().default(8),
   hourlyRate: z.coerce.number().positive().optional().default(350),
 });

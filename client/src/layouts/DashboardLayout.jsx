@@ -104,10 +104,11 @@ export default function DashboardLayout() {
     { label: 'User Management', path: '/admin/users', icon: Users, roles: ['ADMIN'] },
     { label: 'Products & Packages', path: '/admin/packages', icon: Sliders, roles: ['ADMIN'] },
     { label: 'Lead Board (Kanban)', path: '/sales/leads', icon: Kanban, roles: ['ADMIN', 'SALESMAN'] },
-    { label: 'Site Surveys', path: '/operations/surveys', icon: Compass, roles: ['ADMIN', 'SALESMAN', 'TECHNICIAN'] },
-    { label: 'Quote Builder', path: '/sales/quotes', icon: FileSpreadsheet, roles: ['SALESMAN'] },
+    { label: 'Site Surveys', path: '/operations/surveys', icon: Compass, roles: ['ADMIN', 'TECHNICIAN'] },
+    { label: 'Quote Builder', path: '/sales/quotes', icon: FileSpreadsheet, roles: ['ADMIN', 'SALESMAN'] },
     { label: 'Orders & Payments', path: '/sales/orders', icon: Receipt, roles: ['ADMIN', 'SALESMAN', 'ACCOUNTANT'] },
     { label: 'Warehouse & Dispatch', path: '/warehouse/dispatch', icon: Boxes, roles: ['ADMIN', 'WAREHOUSE'] },
+    { label: 'Assigned Deliveries', path: '/delivery/assigned', icon: Truck, roles: ['ADMIN', 'DELIVERY_AGENT'] },
     { label: 'Multi-Zone Stock', path: '/warehouse/inventory', icon: Building2, roles: ['ADMIN', 'WAREHOUSE'] },
     { label: 'Barcode & QR Scanner', path: '/warehouse/scanner', icon: QrCode, roles: ['ADMIN', 'WAREHOUSE', 'TECHNICIAN'] },
     { label: 'Installation Jobs', path: '/technician/jobs', icon: Wrench, roles: ['ADMIN', 'TECHNICIAN'] },
@@ -131,6 +132,7 @@ export default function DashboardLayout() {
     if (newRole === 'CUSTOMER') navigate('/customer-portal');
     else if (newRole === 'TECHNICIAN') navigate('/technician/jobs');
     else if (newRole === 'WAREHOUSE') navigate('/warehouse/dispatch');
+    else if (newRole === 'DELIVERY_AGENT') navigate('/delivery/assigned');
     else if (newRole === 'SUPPORT') navigate('/support/tickets');
     else if (newRole === 'ACCOUNTANT') navigate('/admin/dashboard');
     else if (newRole === 'SALESMAN') navigate('/sales/leads');
@@ -193,6 +195,7 @@ export default function DashboardLayout() {
             <option value="SALESMAN">SALESMAN (Lead Pipeline)</option>
             <option value="ACCOUNTANT">ACCOUNTANT (Finance & Payments)</option>
             <option value="WAREHOUSE">WAREHOUSE (Stock & Serials)</option>
+            <option value="DELIVERY_AGENT">DELIVERY AGENT (Assigned Deliveries)</option>
             <option value="TECHNICIAN">TECHNICIAN (Mobile Form)</option>
             <option value="SUPPORT">SUPPORT (Warranty Desk)</option>
             <option value="CUSTOMER">CUSTOMER (Client Portal)</option>
@@ -221,8 +224,8 @@ export default function DashboardLayout() {
                 to={item.path}
                 className={`group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ${
                   isActive
-                    ? 'bg-[#714b67] text-white shadow-lg shadow-[#714b67]/35 ring-1 ring-white/20'
-                    : 'text-[#dabed3] hover:bg-[#341F2E] hover:text-white'
+                    ? 'bg-gradient-to-r from-[#714b67] to-[#5e3d55] text-white shadow-lg shadow-[#714b67]/35 ring-1 ring-white/20'
+                    : 'text-[#dabed3] hover:-translate-y-0.5 hover:bg-[#341F2E] hover:text-white hover:shadow-md hover:shadow-black/10'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -243,7 +246,7 @@ export default function DashboardLayout() {
         <div className="px-3 pb-2">
           <Link
             to="/website"
-            className="group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-amber-300 bg-[#2d1b28] hover:bg-[#3d2537] border border-[#5c3751] transition"
+            className="group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-amber-300 bg-[#2d1b28] hover:-translate-y-0.5 hover:bg-[#3d2537] hover:shadow-md hover:shadow-black/10 border border-[#5c3751] transition"
           >
             <div className="flex items-center gap-2.5">
               <Globe className="w-4 h-4 text-[#f09e38]" />
@@ -282,7 +285,7 @@ export default function DashboardLayout() {
       {/* Main Container */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header Bar for Desktop & Mobile */}
-        <header className="sticky top-0 z-30 bg-white/85 backdrop-blur-md border-b border-[#EBDCE7] px-4 md:px-8 py-3.5 flex items-center justify-between shadow-xs">
+        <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-xl border-b border-[#EBDCE7] px-4 md:px-8 py-3.5 flex items-center justify-between shadow-[0_8px_24px_rgba(113,75,103,0.06)]">
           {/* Breadcrumb & Section Info */}
           <div className="flex items-center gap-2">
             <button
@@ -308,7 +311,7 @@ export default function DashboardLayout() {
             {/* Quick Guided Tour Button in Top Header */}
             <button
               onClick={() => setTourModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#714B67] to-[#855278] hover:opacity-95 text-white text-xs font-black shadow-sm cursor-pointer transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#714B67] to-[#855278] hover:-translate-y-0.5 hover:shadow-md hover:shadow-[#714B67]/20 text-white text-xs font-black shadow-sm cursor-pointer transition"
             >
               <Compass className="w-3.5 h-3.5 text-[#f09e38]" />
               <span className="hidden sm:inline">Judge Walkthrough Tour</span>
@@ -327,7 +330,7 @@ export default function DashboardLayout() {
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-20 md:pb-8 max-w-7xl mx-auto w-full relative">
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-20 md:pb-8 max-w-7xl mx-auto w-full relative ui-page">
           <Outlet />
         </main>
       </div>
@@ -428,6 +431,7 @@ export default function DashboardLayout() {
               <option value="SALESMAN">SALESMAN</option>
               <option value="ACCOUNTANT">ACCOUNTANT</option>
               <option value="WAREHOUSE">WAREHOUSE</option>
+              <option value="DELIVERY_AGENT">DELIVERY AGENT</option>
               <option value="TECHNICIAN">TECHNICIAN</option>
               <option value="SUPPORT">SUPPORT</option>
               <option value="CUSTOMER">CUSTOMER</option>
@@ -450,7 +454,7 @@ export default function DashboardLayout() {
                 key={item.path}
                 to={item.path}
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 p-3 rounded-xl text-sm font-semibold text-slate-200 bg-[#2B1B27]/70 hover:bg-[#714b67]"
+                className="flex items-center gap-3 p-3 rounded-xl text-sm font-semibold text-slatechec=======200 bg-[#2B1B27]/70 hover:bg-[#714b67]"
               >
                 <item.icon className="w-5 h-5 text-[#f09e38]" />
                 <span>{item.label}</span>

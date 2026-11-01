@@ -17,25 +17,25 @@ router.use(companyScope);
 
 router.get(
   "/",
-  requireRole("ADMIN", "SALESMAN", "TECHNICIAN"),
+  requireRole("ADMIN", "TECHNICIAN"),
   surveysController.listSurveys
 );
 
 router.get(
   "/technicians",
-  requireRole("ADMIN", "SALESMAN", "TECHNICIAN"),
+  requireRole("ADMIN", "TECHNICIAN"),
   surveysController.getTechnicians
 );
 
 router.get(
   "/:id",
-  requireRole("ADMIN", "SALESMAN", "TECHNICIAN"),
+  requireRole("ADMIN", "TECHNICIAN"),
   surveysController.getSurvey
 );
 
 router.post(
   "/schedule",
-  requireRole("ADMIN", "SALESMAN"),
+  requireRole("ADMIN"),
   validate(scheduleSurveySchema),
   surveysController.scheduleSurvey
 );
@@ -50,7 +50,7 @@ router.post(
 
 router.patch(
   "/:id/review",
-  requireRole("ADMIN", "SALESMAN"),
+  requireRole("ADMIN"),
   validate(reviewSurveySchema),
   surveysController.reviewSurvey
 );

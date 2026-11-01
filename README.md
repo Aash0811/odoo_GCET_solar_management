@@ -50,7 +50,7 @@ flowchart TD
 
 ## 🌟 Key Highlights & Hackathon Demo Features
 
-1. **Instant 1-Click Persona Switcher**: Switch on the fly between **ADMIN**, **SALESMAN**, **WAREHOUSE**, **TECHNICIAN**, **SUPPORT**, and **CUSTOMER** directly from the header dropdown without logging out.
+1. **Instant 1-Click Persona Switcher**: Switch on the fly between **ADMIN**, **SALESMAN**, **ACCOUNTANT**, **WAREHOUSE**, **TECHNICIAN**, **SUPPORT**, and **CUSTOMER** directly from the header dropdown without logging out.
 2. **Iconic Odoo Purple `#714B67` Aesthetic**: Curated glassmorphism design system (`.odoo-glass-card`), high-contrast badges, glowing status rings, and Google Fonts **Plus Jakarta Sans** & **JetBrains Mono**.
 3. **Interactive Photovoltaic Array Simulator**: Quotation Studio includes a real-time responsive solar cell array visualizer reflecting exact module count as the kW capacity slider moves (1 to 10 kW).
 4. **11 Strict Server-Enforced Business Rules**:
@@ -92,10 +92,12 @@ All accounts share the default password: **`password123`**
 | :--- | :--- | :--- |
 | **ADMIN** | `admin@sunpower.com` | Arjun Verma (Managing Director) — Full Analytics & Finance |
 | **SALESMAN** | `sales@sunpower.com` | Priya Sharma (Sales Executive) — Lead Board & Quote Builder |
+| **ACCOUNTANT** | `accountant@sunpower.com` | Anil Mehta (Accountant) — Payments, Invoices & Subsidies |
 | **WAREHOUSE** | `warehouse@sunpower.com` | Rahul Verma (Inventory Manager) — Pick Lists & Serial Scanner |
 | **TECHNICIAN** | `tech@sunpower.com` | Vikram Singh (Senior Installer) — Mobile Checklist & Signatures |
 | **SUPPORT** | `support@sunpower.com` | Neha Patel (Customer Service) — Warranty Lookup & Tickets |
-| **CUSTOMER** | `customer@sunpower.com` | Ananya Deshmukh (Client) — Live Milestone Tracker & Portal |
+| **CUSTOMER** | `customer@sunpower.com` | Ravi Kumar (Client) — Live Milestone Tracker & Portal |
+| **CUSTOMER** | `sita@sunpower.com` | Sita Devi (Isolation-Test Client) — Own Records Only |
 
 *(Tip: You can use the Quick-Switch dropdown at the top of the app sidebar to switch between any persona in 1 click!)*
 

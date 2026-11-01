@@ -108,7 +108,7 @@ async function getDashboardStats(companyId, timeframe = "month") {
   const totalRevenue = allOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
 
   const allPayments = await prisma.payment.findMany({
-    where: { companyId, status: "COMPLETED" },
+    where: { companyId, status: "COMPLETED", isVerified: true },
     select: { amount: true, receivedAt: true, createdAt: true },
   });
   const totalCollections = allPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);

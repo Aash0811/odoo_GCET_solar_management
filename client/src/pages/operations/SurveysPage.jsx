@@ -285,8 +285,14 @@ export default function SurveysPage() {
     try {
       await surveysApi.schedule(scheduleForm);
       setScheduleModalOpen(false);
-      setScheduleForm({ leadId: '', surveyId: '', surveyedById: '', scheduledAt: '', notes: '' });
-      showToast('Survey Scheduled', 'Technician assigned and site appointment placed on calendar.');
+      setScheduleForm({
+        leadId: '',
+        surveyId: '',
+        surveyedById: '',
+        scheduledAt: '',
+        notes: '',
+      });
+      showToast('Survey Scheduled', 'Technician assigned by Admin and site appointment placed on calendar.');
       loadData();
     } catch (err) {
       alert('Failed to schedule survey: ' + (err.response?.data?.message || err.message));
@@ -568,9 +574,15 @@ export default function SurveysPage() {
 
                     <div className="space-y-0.5">
                       <span className="text-[9px] uppercase font-black text-slate-400 block">Assigned Technician</span>
-                      <p className="font-bold text-[#241621] text-[11px] flex items-center gap-1">
-                        <User className="w-3 h-3 text-[#f09e38]" /> {survey.surveyedBy?.name || 'Unassigned'}
-                      </p>
+                      {survey.surveyedBy?.name ? (
+                        <p className="font-bold text-[#241621] text-[11px] flex items-center gap-1">
+                          <User className="w-3 h-3 text-emerald-600" /> {survey.surveyedBy.name}
+                        </p>
+                      ) : (
+                        <span className="text-[10px] font-black text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded border border-amber-300 inline-block">
+                          ⚠️ Needs Admin Assignment
+                        </span>
+                      )}
                       {survey.surveyedBy?.phone && (
                         <p className="font-mono text-[10px] text-slate-500">
                           {survey.surveyedBy.phone}
@@ -657,7 +669,7 @@ export default function SurveysPage() {
                         }}
                         className="px-3 py-1.5 rounded-xl bg-[#FAF6F9] hover:bg-[#714B67] text-[#714B67] hover:text-white border border-[#EBDCE7] font-bold text-xs transition cursor-pointer"
                       >
-                        {survey.scheduledAt ? 'Reschedule Appointment' : 'Schedule Appointment'}
+                        {survey.surveyedById ? 'Reschedule / Reassign Technician' : '⚡ Assign Technician & Schedule'}
                       </button>
                     )}
 
@@ -1236,20 +1248,28 @@ export default function SurveysPage() {
               )}
 
               <div>
-                <label className="font-extrabold text-[#241621] mb-1 block">Assign Field Technician *</label>
+                <label className="font-extrabold text-[#241621] mb-1 flex items-center justify-between">
+                  <span>Assign Technician (Admin Discretion) *</span>
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                    Admin Assignment Required
+                  </span>
+                </label>
                 <select
                   required
                   value={scheduleForm.surveyedById}
                   onChange={(e) => setScheduleForm({ ...scheduleForm, surveyedById: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] bg-white font-bold"
+                  className="w-full p-2.5 rounded-xl border border-[#EBDCE7] bg-white font-bold text-xs"
                 >
-                  <option value="">— Select Technician —</option>
+                  <option value="">— Select Technician to Assign —</option>
                   {technicians.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name} ({t.activeSurveys} active appointments)
+                      {t.name} ({t.activeSurveys || 0} active surveys) • {t.phone || t.email || 'Technician'}
                     </option>
                   ))}
                 </select>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Auto-assignment strategy has been removed. The Admin must select a qualified technician.
+                </p>
               </div>
 
               <div>
@@ -1296,4 +1316,3 @@ export default function SurveysPage() {
     </div>
   );
 }
-

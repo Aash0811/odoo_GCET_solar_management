@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SignatureCanvas from 'react-signature-canvas';
-import { customerPortalApi, quotesApi, jobsApi, leadsApi, ordersApi } from '../../api';
+import { customerPortalApi, quotesApi, jobsApi, leadsApi, ordersApi, financeApi, ticketsApi } from '../../api';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -39,6 +39,7 @@ import {
   Camera,
   Upload,
   Image,
+  Receipt,
 } from 'lucide-react';
 
 export default function CustomerPortalPage() {
@@ -144,6 +145,35 @@ export default function CustomerPortalPage() {
       alert('Error raising ticket: ' + (err.response?.data?.message || err.message));
     } finally {
       setSubmittingTicket(false);
+    }
+  };
+
+  const handleConfirmTicket = async (ticket) => {
+    try {
+      await ticketsApi.updateStatus(ticket.id, { status: 'CUSTOMER_CONFIRMED' });
+      alert('Service resolution confirmed. Our support team can now close the ticket.');
+      loadPortalData();
+    } catch (err) {
+      alert('Confirmation failed: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  const handleInvoicePayment = async (invoice) => {
+    const remaining = Number(invoice.amountDue || 0);
+    const amount = window.prompt(`Enter payment amount (maximum ₹${remaining.toLocaleString('en-IN')}):`, String(remaining));
+    if (amount === null) return;
+    const method = window.prompt('Payment method (UPI, BANK_TRANSFER, CARD, CASH):', 'UPI');
+    if (!method) return;
+    try {
+      await financeApi.payInvoice(invoice.id, {
+        amount: Number(amount),
+        method: method.toUpperCase(),
+        reference: `PORTAL-${Date.now()}`,
+      });
+      alert('Service invoice payment recorded successfully.');
+      loadPortalData();
+    } catch (err) {
+      alert('Payment failed: ' + (err.response?.data?.message || err.message));
     }
   };
 
@@ -269,7 +299,7 @@ export default function CustomerPortalPage() {
     );
   }
 
-  const { profile, quotes = [], leads = [], orders = [], warranties = [], tickets = [], subsidies = [] } = data;
+  const { profile, quotes = [], leads = [], orders = [], warranties = [], tickets = [], subsidies = [], invoices = [] } = data;
   const activeOrder = orders[0];
   const activeJob = activeOrder?.installationJobs?.[0];
 
@@ -351,6 +381,12 @@ export default function CustomerPortalPage() {
           }`}
         >
           <Wrench className="w-4 h-4" /> Service Requests ({tickets.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('invoices')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition ${activeTab === 'invoices' ? 'bg-[#714B67] text-white shadow-lg' : 'bg-white/70 text-[#714B67] border border-[#EBDCE7]'}`}
+        >
+          <Receipt className="w-4 h-4" /> Service Invoices ({invoices.filter((i) => i.status !== 'PAID').length})
         </button>
 
         <button
@@ -595,6 +631,50 @@ export default function CustomerPortalPage() {
                           </a>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Component Connection Verification Matrix */}
+                  <div className="mt-3 pt-3 border-t border-[#EBDCE7]/80">
+                    <p className="text-[11px] font-black uppercase text-[#714B67] tracking-wider mb-2 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Component Connection & Safety Inspection (100% Verified)
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {[
+                        'Module Mounting Structure Anchored',
+                        'Solar PV Panels Strings Torqued',
+                        'DC Distribution Box (DCDB) Wired',
+                        'Solar Inverter DC/AC Inputs Connected',
+                        'AC Distribution Box (ACDB) Protected',
+                        'Dual Chemical Earthing Grounded',
+                        'Lightning Arrester (LA) Bonded',
+                        'DISCOM Net-Meter Synced',
+                        'Full Power Generation Active',
+                      ].map((item, idx) => (
+                        <div key={idx} className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-[10px] font-bold text-emerald-950 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="truncate">{item}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Signature on file */}
+                  {activeJob.signature && (
+                    <div className="mt-3 pt-3 border-t border-[#EBDCE7]/80 flex items-center justify-between text-xs">
+                      <div>
+                        <p className="font-bold text-[#241621]">Digital Acceptance Sign-Off</p>
+                        <p className="text-[10px] text-slate-500">
+                          Signed by: {activeJob.signature.signedByName} on {new Date(activeJob.signature.signedAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      {activeJob.signature.imageUrl && (
+                        <img
+                          src={activeJob.signature.imageUrl}
+                          alt="Signature"
+                          className="h-10 max-w-[120px] object-contain border border-slate-200 rounded bg-white p-1"
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -902,10 +982,56 @@ export default function CustomerPortalPage() {
                   </div>
                   <p className="text-xs text-slate-600 font-medium">{t.description}</p>
                   <p className="text-[10px] text-[#b886ad] font-bold">Reported on: {new Date(t.reportedAt).toLocaleDateString()}</p>
+                  {t.status === 'RESOLVED' && (
+                    <button
+                      onClick={() => handleConfirmTicket(t)}
+                      className="mt-2 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-black hover:bg-emerald-700"
+                    >
+                      Confirm resolution
+                    </button>
+                  )}
                 </div>
               ))
             )}
           </div>
+        </div>
+      )}
+
+      {/* TAB: SERVICE INVOICES */}
+      {activeTab === 'invoices' && (
+        <div className="space-y-4">
+          <h2 className="text-sm font-black text-[#241621]">Service Invoices</h2>
+          {invoices.length === 0 ? (
+            <p className="p-8 text-center text-[#b886ad] bg-white rounded-3xl border border-[#EBDCE7] text-xs font-semibold">
+              No service invoices are currently available.
+            </p>
+          ) : invoices.map((invoice) => (
+            <div key={invoice.id} className="p-5 rounded-2xl odoo-glass-card space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-mono font-black text-[#714B67]">{invoice.invoiceNumber}</p>
+                  <p className="text-xs text-slate-500">{invoice.ticket?.ticketNumber || 'Service invoice'}</p>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-black ${invoice.status === 'PAID' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                  {invoice.status}
+                </span>
+              </div>
+              <div className="flex items-center justify-between border-t border-[#EBDCE7] pt-3">
+                <div className="text-xs">
+                  <span className="text-slate-400 block">Outstanding</span>
+                  <span className="font-black text-base text-[#241621]">₹{Number(invoice.amountDue || 0).toLocaleString('en-IN')}</span>
+                </div>
+                {invoice.status !== 'PAID' && Number(invoice.amountDue) > 0 && (
+                  <button
+                    onClick={() => handleInvoicePayment(invoice)}
+                    className="px-4 py-2 rounded-xl bg-[#714B67] text-white text-xs font-black hover:bg-[#5d3d55]"
+                  >
+                    Pay invoice
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

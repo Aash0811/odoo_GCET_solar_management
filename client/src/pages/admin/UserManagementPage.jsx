@@ -386,7 +386,7 @@ export default function UserManagementPage() {
         {/* Role Filter Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
           <span className="text-[11px] font-black text-[#714B67] mr-1 uppercase">Role:</span>
-          {['ALL', 'ADMIN', 'SALESMAN', 'WAREHOUSE', 'TECHNICIAN', 'ACCOUNTANT', 'SUPPORT', 'CUSTOMER'].map(
+          {['ALL', 'ADMIN', 'SALESMAN', 'WAREHOUSE', 'DELIVERY_AGENT', 'TECHNICIAN', 'ACCOUNTANT', 'SUPPORT', 'CUSTOMER'].map(
             (r) => (
               <button
                 key={r}
@@ -515,6 +515,7 @@ export default function UserManagementPage() {
                         <option value="ADMIN">ADMIN</option>
                         <option value="SALESMAN">SALESMAN</option>
                         <option value="WAREHOUSE">WAREHOUSE</option>
+                        <option value="DELIVERY_AGENT">DELIVERY AGENT</option>
                         <option value="TECHNICIAN">TECHNICIAN</option>
                         <option value="ACCOUNTANT">ACCOUNTANT</option>
                         <option value="SUPPORT">SUPPORT</option>
@@ -694,6 +695,7 @@ export default function UserManagementPage() {
                   >
                     <option value="SALESMAN">SALESMAN (Quotes, Leads, Surveys)</option>
                     <option value="WAREHOUSE">WAREHOUSE (Stock Inward, Picking, Transf.)</option>
+                    <option value="DELIVERY_AGENT">DELIVERY AGENT (Customer Deliveries)</option>
                     <option value="TECHNICIAN">TECHNICIAN (Installation Jobs, Photos)</option>
                     <option value="ACCOUNTANT">ACCOUNTANT (Finance, Payments, Invoices)</option>
                     <option value="SUPPORT">SUPPORT (Tickets, Warranties)</option>
@@ -847,6 +849,7 @@ export default function UserManagementPage() {
                     <option value="ADMIN">ADMIN</option>
                     <option value="SALESMAN">SALESMAN</option>
                     <option value="WAREHOUSE">WAREHOUSE</option>
+                    <option value="DELIVERY_AGENT">DELIVERY AGENT</option>
                     <option value="TECHNICIAN">TECHNICIAN</option>
                     <option value="ACCOUNTANT">ACCOUNTANT</option>
                     <option value="SUPPORT">SUPPORT</option>
@@ -942,4 +945,3 @@ export default function UserManagementPage() {
     </div>
   );
 }
-
